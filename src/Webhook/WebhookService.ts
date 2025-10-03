@@ -110,5 +110,3 @@ export class WebhookService {
         await db.query(sql, [eventId]);
     }
 }
-
-export default WebhookService;

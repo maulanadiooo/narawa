@@ -207,3 +207,27 @@ export interface AppConfig {
   logLevel: string;
   database: DatabaseConfig;
 }
+
+
+export enum MessageStatusUpdate {
+  PENDING = 1,
+  SEND = 2,
+  DELIVERED = 3,
+  READ = 4
+}
+
+// Helper function untuk mendapatkan text dari status
+export const getMessageStatusText = (status: number): string => {
+  switch (status) {
+    case MessageStatusUpdate.PENDING:
+      return 'pending';
+    case MessageStatusUpdate.SEND:
+      return 'sent';
+    case MessageStatusUpdate.DELIVERED:
+      return 'delivered';
+    case MessageStatusUpdate.READ:
+      return 'read';
+    default:
+      return 'unknown';
+  }
+}

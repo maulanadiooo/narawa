@@ -319,6 +319,7 @@ export class SessionManager {
                         messageId: message.key.id,
                         from: fromJid,
                         message: message.message,
+                        m: m,
                         timestamp: new Date().toISOString()
                     }
                 });
@@ -554,5 +555,3 @@ export class SessionManager {
         }
     }
 }
-
-export default SessionManager;

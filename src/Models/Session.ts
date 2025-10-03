@@ -124,5 +124,3 @@ export class Session implements ISession {
         };
     }
 }
-
-export default Session;
