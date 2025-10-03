@@ -1,4 +1,4 @@
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import P from 'pino';
@@ -125,7 +125,7 @@ export class SessionManager {
                 auth: state,
                 printQRInTerminal: false,
                 logger: this.logger,
-                browser: ['NaraWA', 'Chrome', '1.0.0'],
+                browser: Browsers.macOS("Desktop"),
                 generateHighQualityLinkPreview: true,
                 connectTimeoutMs: 60_000,
                 keepAliveIntervalMs: 30_000,
@@ -134,9 +134,7 @@ export class SessionManager {
                 markOnlineOnConnect: true,
                 syncFullHistory: false,
                 getMessage: async (key) => {
-                    return {
-                        conversation: 'Hello!'
-                    };
+                    return undefined;
                 }
             });
 
@@ -351,7 +349,7 @@ export class SessionManager {
             // Disconnect socket
             await sessionData.socket.logout();
             this.sessions.delete(sessionName);
-            
+
             await this.deleteAndRemoveSession(sessionName);
         } else {
             printConsole.error(`Session ${sessionName} not found in sessions`);
