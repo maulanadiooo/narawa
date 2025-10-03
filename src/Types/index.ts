@@ -136,18 +136,18 @@ export interface SessionData {
   webhook_url?: string;
 }
 
-export interface MessageData {
-  id: string;
-  session_id: string;
-  message_id?: string;
-  to_number: string;
-  message_type: 'text' | 'image' | 'document' | 'audio' | 'video';
-  content?: string;
-  file_path?: string;
-  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
-  created_at: Date;
-  updated_at: Date;
-}
+// export interface MessageData {
+//   id: string;
+//   session_id: string;
+//   message_id?: string;
+//   to_number: string;
+//   message_type: 'text' | 'image' | 'document' | 'audio' | 'video';
+//   content?: string;
+//   file_path?: string;
+//   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+//   created_at: Date;
+//   updated_at: Date;
+// }
 
 export interface WebhookEventData {
   id: string;
@@ -168,7 +168,8 @@ export interface SessionManagerData {
 }
 
 export interface MessageData {
-  url: string;
+  url?: string;
+  buffer?: Buffer;
   caption?: string;
   fileName?: string;
   mimetype?: string;

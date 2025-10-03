@@ -1,11 +1,11 @@
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers, AnyMediaMessageContent } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import P from 'pino';
 import { existsSync, rmdirSync } from 'fs';
 import { Session } from '../Models/Session';
 import { WebhookService } from '../Webhook/WebhookService';
-import { ISession, SessionManagerData, MessageData, WebhookEventType } from '../Types';
+import { ISession, SessionManagerData, MessageData } from '../Types';
 import { PrintConsole } from '../Helper/PrintConsole';
 import { ErrorResponse } from '../Helper/ResponseError';
 
@@ -22,9 +22,6 @@ export class SessionManager {
         this.logger = P({ level: Bun.env.LOG_LEVEL || 'info' });
         this.webhookService = new WebhookService();
         this.sessionModel = new Session();
-
-        // Auto-reload active sessions on startup
-        // this.loadActiveSessions();
     }
 
 
@@ -198,11 +195,11 @@ export class SessionManager {
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-            
+
             // Check if it's a conflict error - don't reconnect immediately
             // const isConflictError = lastDisconnect?.error?.message?.includes('conflict') || 
             //                       lastDisconnect?.error?.message?.includes('replaced');
-            
+
             if (shouldReconnect) {
                 printConsole.info(`Reconnecting session ${session.sessionName}...`);
                 session.status = 'connecting';
@@ -226,13 +223,13 @@ export class SessionManager {
                         printConsole.error(`Failed to reconnect session ${session.sessionName}: ${(error as Error).message}`);
                     }
                 }, 5000); // Wait 5 seconds before reconnecting
-            } 
+            }
             // else if (isConflictError) {
             //     printConsole.warning(`Session ${session.sessionName} conflict detected - stopping reconnection attempts`);
             //     session.status = 'disconnected';
             //     session.qrCode = undefined;
             //     await (session as Session).save();
-                
+
             //     await this.webhookService.sendEvent({
             //         sessionId: session.id,
             //         webhookUrl: session.webhookUrl,
@@ -243,7 +240,7 @@ export class SessionManager {
             //             timestamp: new Date().toISOString()
             //         }
             //     });
-                
+
             //     this.deleteAndRemoveSession(session.sessionName);
             // } 
             else {
@@ -426,7 +423,7 @@ export class SessionManager {
             } catch (error) {
                 printConsole.warning(`Error during socket logout: ${(error as Error).message}`);
             }
-            
+
             // Remove from memory
             this.sessions.delete(sessionName);
             printConsole.info(`Session ${sessionName} removed from memory`);
@@ -516,17 +513,27 @@ export class SessionManager {
                     break;
                 case 'image':
                     const imageData = message as MessageData;
-                    result = await sessionData.socket.sendMessage(normalizedTo, {
-                        image: { url: imageData.url },
-                        caption: imageData.caption || ''
-                    });
+                    if (!imageData.url && !imageData.buffer) {
+                        throw new ErrorResponse(400, "IMAGE_DATA_REQUIRED", `Image should as string url or File`);
+                    }
+                    let dataImage: AnyMediaMessageContent = {
+                        image: imageData.url ? { url: imageData.url } : imageData.buffer!,
+                        caption: imageData.caption || '',
+                        jpegThumbnail: imageData.url ? undefined : imageData.buffer?.toString('base64'),
+                        mimetype: imageData.mimetype || 'image/png'
+                    }
+                    result = await sessionData.socket.sendMessage(normalizedTo, dataImage);
                     break;
                 case 'document':
                     const docData = message as MessageData;
+                    if (!docData.url && !docData.buffer) {
+                        throw new ErrorResponse(400, "DOCUMENT_DATA_REQUIRED", `Document should as string url or File`);
+                    }
                     result = await sessionData.socket.sendMessage(normalizedTo, {
-                        document: { url: docData.url },
+                        document: docData.url ? { url: docData.url } : docData.buffer!,
                         mimetype: docData.mimetype || 'application/octet-stream',
-                        fileName: docData.fileName || 'document'
+                        fileName: docData.fileName || 'document',
+                        caption: docData.caption || ''
                     });
                     break;
                 default:

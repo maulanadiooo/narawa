@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { GetQrDataQuery, SendTextBody, SessionCreateDto, SessionParamsDto } from "./Session.types";
+import { GetQrDataQuery, SendImageDto, SendTextBody, SessionCreateDto, SessionParamsDto } from "./Session.types";
 import { SessionService } from "./Service";
 const sessionService = new SessionService();
 
@@ -30,6 +30,18 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
         return sessionService.SendText({ set, body, params })
     }, {
         body: SendTextBody,
+        params: SessionParamsDto
+    })
+    .post("/send-image", async ({ set, body, params }) => {
+        return sessionService.SendImage({ set, body, params })
+    }, {
+        body: SendImageDto,
+        params: SessionParamsDto
+    })
+    .post("/send-document", async ({ set, body, params }) => {
+        return sessionService.SendDocument({ set, body, params })
+    }, {
+        body: SendImageDto,
         params: SessionParamsDto
     })
 

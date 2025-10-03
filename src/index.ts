@@ -74,7 +74,6 @@ const appServer = new Elysia()
         msg: `Validation error`,
       })
     } else if (code === "INTERNAL_SERVER_ERROR") {
-      // TODO: loging ?
       return ResponseApi({
         set: set,
         status: false,

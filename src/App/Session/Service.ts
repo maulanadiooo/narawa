@@ -1,12 +1,14 @@
 import { printConsole, sessionManager } from "../..";
 import { ResponseApiSuccess } from "../../Helper/ResponseApi";
 import { ErrorResponse } from "../../Helper/ResponseError";
-import { IDeleteSession, IGetQrData, IGetStatus, IRestartSession, ISendText, ISessionCreate } from "./Session.types";
+import { CleanUUID } from "../../Helper/uuid";
+import { MessageData } from "../../Types";
+import { IDeleteSession, IGetQrData, IGetStatus, IRestartSession, ISendDoc, ISendImage, ISendText, ISessionCreate } from "./Session.types";
 import qrcode from 'qrcode';
 export class SessionService {
 
     constructor() {
-       
+
     }
 
     private checkSession = async (sessionName: string) => {
@@ -109,6 +111,68 @@ export class SessionService {
         return ResponseApiSuccess({
             set,
             data: { message: "Message sent successfully" }
+        })
+    }
+
+    SendImage = async (props: ISendImage) => {
+        const { params, set, body } = props;
+        const { sessionName } = params;
+        const { to, imageUrl, imageFile, caption } = body;
+        await this.checkSession(sessionName);
+        let buffer: Buffer | undefined = undefined
+        if (imageFile) {
+            const  allowedMimeTypes = ["image/jpeg", "image/png", "image/jpg"]
+            if (!allowedMimeTypes.includes(imageFile.type)) {
+                throw new ErrorResponse(400, "INVALID_IMAGE_TYPE", "Invalid image type");
+            }
+            buffer = Buffer.from(await imageFile.arrayBuffer());
+        }
+        const messageData: MessageData = {
+            url: imageUrl,
+            buffer: buffer,
+            caption: caption,
+            fileName: `${CleanUUID()}.png`,
+            mimetype: imageFile ? imageFile.type : "image/png"
+        }
+        await sessionManager.sendMessage(sessionName, to, messageData, 'image');
+        return ResponseApiSuccess({
+            set,
+            data: { message: "Image sent successfully" }
+        })
+    }
+
+    SendDocument = async (props: ISendDoc) => {
+        const { params, set, body } = props;
+        const { sessionName } = params;
+        const { to, docFile, docUrl, caption } = body;
+        await this.checkSession(sessionName);
+        let buffer: Buffer | undefined = undefined
+        if (docFile) {
+            const  allowedDoctTypes = [
+                "application/pdf", "application/msword", 
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                "application/vnd.ms-powerpoint", 
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ]
+            if (!allowedDoctTypes.includes(docFile.type)) {
+                throw new ErrorResponse(400, "INVALID_DOC_TYPE", "Invalid document type");
+            }
+            buffer = Buffer.from(await docFile.arrayBuffer());
+        }
+
+        const messageData: MessageData = {
+            url: docUrl,
+            buffer: buffer,
+            caption: caption,
+            fileName: `${CleanUUID()}.${docFile ? docFile.type : "pdf"}`,
+            mimetype: docFile ? docFile.type : "image/png"
+        }
+
+        await sessionManager.sendMessage(sessionName, to, messageData, 'document');
+        return ResponseApiSuccess({
+            set,
+            data: { message: "Document sent successfully" }
         })
     }
 }

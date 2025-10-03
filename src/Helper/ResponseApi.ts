@@ -50,9 +50,6 @@ export const ResponseApi = ({
     error = [],
     responseType = "JSON",
 }: TResponseApiJson<object | null, any>): TReturnResponseJson => {
-    if (error !== null) {
-        //     TODO: SEND DISCORD
-    }
     set.status = statusCode;
     if (responseType === "JSON") {
         set.headers["Content-Type"] = "Application/json";
