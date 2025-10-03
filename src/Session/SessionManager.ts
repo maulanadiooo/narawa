@@ -7,13 +7,27 @@ import { Session } from '../Models/Session';
 import { WebhookService } from '../Webhook/WebhookService';
 import { ISession, SessionManagerData, MessageData, WebhookEventType } from '../Types';
 import { PrintConsole } from '../Helper/PrintConsole';
+import { ErrorResponse } from '../Helper/ResponseError';
 
 const printConsole = new PrintConsole();
 
 export class SessionManager {
-    private sessions: Map<string, SessionManagerData>;
+    sessions: Map<string, SessionManagerData>;
     private logger: P.Logger;
     private webhookService: WebhookService;
+    readonly sessionModel: Session;
+
+    constructor() {
+        this.sessions = new Map();
+        this.logger = P({ level: Bun.env.LOG_LEVEL || 'info' });
+        this.webhookService = new WebhookService();
+        this.sessionModel = new Session();
+
+        // Auto-reload active sessions on startup
+        // this.loadActiveSessions();
+    }
+
+
 
     private validateAndNormalizeJid(jid: string): string {
         try {
@@ -42,33 +56,24 @@ export class SessionManager {
             // Validate the formatted JID
             const decoded = jidDecode(formattedJid);
             if (!decoded || !decoded.user) {
-                throw new Error(`Invalid WhatsApp number format: ${jid}`);
+                throw new ErrorResponse(400, "INVALID_WHATSAPP_NUMBER_FORMAT", `Invalid WhatsApp number format: ${jid}`);
             }
 
             return formattedJid;
         }
     }
 
-    constructor() {
-        this.sessions = new Map();
-        this.logger = P({ level: Bun.env.LOG_LEVEL || 'info' });
-        this.webhookService = new WebhookService();
-
-        // Auto-reload active sessions on startup
-        // this.loadActiveSessions();
-    }
-
     async loadActiveSessions(): Promise<void> {
         try {
             printConsole.info('Loading active sessions from database...');
-            const activeSessions = await Session.findAll();
+            const activeSessions = await this.sessionModel.findAll();
 
             for (const session of activeSessions) {
                 if (session.isActive && session.status === 'connected') {
                     printConsole.info(`Reloading session: ${session.sessionName}`);
                     try {
                         await this.initializeSession(session);
-                        printConsole.info(`Session ${session.sessionName} reloaded successfully`);
+                        printConsole.success(`Session ${session.sessionName} reloaded successfully`);
                     } catch (error) {
                         printConsole.error(`Failed to reload session ${session.sessionName}: ${(error as Error).message}`);
                         // Mark session as disconnected if reload fails
@@ -86,35 +91,37 @@ export class SessionManager {
         }
     }
 
-    async createSession(sessionName: string): Promise<ISession> {
-        try {
-            // Check if session already exists
-            let session = await Session.findBySessionName(sessionName);
-
-            if (session) {
-                if (session.isActive) {
-                    throw new Error(`Session '${sessionName}' already exists and is active`);
-                }
-                // Reactivate existing session
-                session.isActive = true;
-                await session.save();
-            } else {
-                // Create new session
-                session = new Session({
-                    sessionName: sessionName,
-                    status: 'qr_required'
-                });
-                await session.save();
-            }
-
-            // Initialize Baileys socket
-            await this.initializeSession(session);
-
-            return session;
-        } catch (error) {
-            printConsole.error(`Failed to create session ${sessionName}: ${(error as Error).message}`);
-            throw error;
+    async createSession(sessionName: string, webhookUrl?: string): Promise<ISession> {
+        // Check if session already exists in memory
+        if (this.sessions.has(sessionName)) {
+            throw new ErrorResponse(400, "SESSION_IS_ACTIVE", `Session '${sessionName}' already exists and active in memory`);
         }
+
+        // Check if session already exists in database
+        let session = await this.sessionModel.findBySessionName(sessionName);
+
+        if (session) {
+            if (session.isActive) {
+                throw new ErrorResponse(400, "SESSION_IS_ACTIVE", `Session '${sessionName}' already exists and active`);
+            }
+            // Reactivate existing session
+            session.isActive = true;
+            await session.save();
+        } else {
+            // Create new session
+            session = new Session({
+                sessionName: sessionName,
+                status: 'qr_required',
+                webhookUrl: webhookUrl
+            });
+            await session.save();
+        }
+
+        // Initialize Baileys socket
+        await this.initializeSession(session);
+
+        return session;
+
     }
 
     private async initializeSession(session: ISession): Promise<void> {
@@ -125,7 +132,7 @@ export class SessionManager {
                 auth: state,
                 printQRInTerminal: false,
                 logger: this.logger,
-                browser: Browsers.macOS("Desktop"),
+                browser: ['NaraWA', 'Chrome', '1.0.0'],
                 generateHighQualityLinkPreview: true,
                 connectTimeoutMs: 60_000,
                 keepAliveIntervalMs: 30_000,
@@ -150,7 +157,9 @@ export class SessionManager {
                 await this.handleConnectionUpdate(session, update);
             });
 
-            socket.ev.on('creds.update', saveCreds);
+            socket.ev.on('creds.update', () => {
+                saveCreds();
+            });
 
             socket.ev.on('messages.upsert', async (m) => {
                 await this.handleMessages(session, m);
@@ -167,7 +176,7 @@ export class SessionManager {
             printConsole.info(`Session ${session.sessionName} initialized`);
         } catch (error) {
             printConsole.error(`Failed to initialize session ${session.sessionName}: ${(error as Error).message}`);
-            throw error;
+            throw new ErrorResponse(500, "FAILED_TO_CREATE_SESSION", `Failed to initialize session ${session.sessionName}`);
         }
     }
 
@@ -178,7 +187,7 @@ export class SessionManager {
             // Generate QR code as base64
             try {
                 const qrCodeBase64 = await qrcode.toDataURL(qr);
-                session.qrCode = qrCodeBase64;
+                session.qrCode = qr;
                 session.status = 'qr_required';
                 await (session as Session).save();
                 printConsole.info(`QR code generated for session ${session.sessionName}`);
@@ -189,11 +198,25 @@ export class SessionManager {
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-
+            
+            // Check if it's a conflict error - don't reconnect immediately
+            // const isConflictError = lastDisconnect?.error?.message?.includes('conflict') || 
+            //                       lastDisconnect?.error?.message?.includes('replaced');
+            
             if (shouldReconnect) {
                 printConsole.info(`Reconnecting session ${session.sessionName}...`);
                 session.status = 'connecting';
                 await (session as Session).save();
+                await this.webhookService.sendEvent({
+                    sessionId: session.id,
+                    webhookUrl: session.webhookUrl,
+                    eventType: 'session.retry',
+                    eventData: {
+                        sessionName: session.sessionName,
+                        reason: lastDisconnect?.error?.message,
+                        timestamp: new Date().toISOString()
+                    }
+                })
 
                 // Wait a bit before reconnecting
                 setTimeout(async () => {
@@ -203,31 +226,71 @@ export class SessionManager {
                         printConsole.error(`Failed to reconnect session ${session.sessionName}: ${(error as Error).message}`);
                     }
                 }, 5000); // Wait 5 seconds before reconnecting
-            } else {
+            } 
+            // else if (isConflictError) {
+            //     printConsole.warning(`Session ${session.sessionName} conflict detected - stopping reconnection attempts`);
+            //     session.status = 'disconnected';
+            //     session.qrCode = undefined;
+            //     await (session as Session).save();
+                
+            //     await this.webhookService.sendEvent({
+            //         sessionId: session.id,
+            //         webhookUrl: session.webhookUrl,
+            //         eventType: 'session.conflict',
+            //         eventData: {
+            //             sessionName: session.sessionName,
+            //             reason: 'Session conflict - another instance is running',
+            //             timestamp: new Date().toISOString()
+            //         }
+            //     });
+                
+            //     this.deleteAndRemoveSession(session.sessionName);
+            // } 
+            else {
                 printConsole.info(`Session ${session.sessionName} logged out`);
                 session.status = 'disconnected';
                 session.qrCode = undefined;
                 await (session as Session).save();
+
+                await this.webhookService.sendEvent({
+                    sessionId: session.id,
+                    webhookUrl: session.webhookUrl,
+                    eventType: 'session.disconnected',
+                    eventData: {
+                        sessionName: session.sessionName,
+                        reason: lastDisconnect?.error?.message,
+                        timestamp: new Date().toISOString()
+                    }
+                })
+
                 this.deleteAndRemoveSession(session.sessionName);
             }
         } else if (connection === 'open') {
-            printConsole.info(`Session ${session.sessionName} connected successfully`);
+            printConsole.success(`Session ${session.sessionName} connected successfully`);
             session.status = 'connected';
             session.qrCode = undefined;
 
             // Get phone number from socket
             const sessionData = this.sessions.get(session.sessionName);
-            if (sessionData?.socket?.user?.id) {
-                session.phoneNumber = sessionData.socket.user.id.split(':')[0];
+            if (sessionData) {
+                sessionData.session.status = 'connected';
+                if (sessionData.socket?.user?.id) {
+                    session.phoneNumber = sessionData.socket.user.id.split(':')[0];
+                }
             }
 
             await (session as Session).save();
 
             // Send webhook notification
-            await this.webhookService.sendEvent(session.id, 'session.connected', {
-                sessionName: session.sessionName,
-                phoneNumber: session.phoneNumber,
-                timestamp: new Date().toISOString()
+            await this.webhookService.sendEvent({
+                sessionId: session.id,
+                webhookUrl: session.webhookUrl,
+                eventType: 'session.connected',
+                eventData: {
+                    sessionName: session.sessionName,
+                    phoneNumber: session.phoneNumber,
+                    timestamp: new Date().toISOString()
+                }
             });
         }
     }
@@ -247,12 +310,17 @@ export class SessionManager {
                 }
 
                 // Send webhook for incoming messages
-                await this.webhookService.sendEvent(session.id, 'message.received', {
-                    sessionName: session.sessionName,
-                    messageId: message.key.id,
-                    from: fromJid,
-                    message: message.message,
-                    timestamp: new Date().toISOString()
+                await this.webhookService.sendEvent({
+                    sessionId: session.id,
+                    webhookUrl: session.webhookUrl,
+                    eventType: 'message.received',
+                    eventData: {
+                        sessionName: session.sessionName,
+                        messageId: message.key.id,
+                        from: fromJid,
+                        message: message.message,
+                        timestamp: new Date().toISOString()
+                    }
                 });
             }
         } catch (error) {
@@ -264,11 +332,16 @@ export class SessionManager {
         try {
             for (const update of updates) {
                 // Send webhook for message updates (delivery, read, etc.)
-                await this.webhookService.sendEvent(session.id, 'message.update', {
-                    sessionName: session.sessionName,
-                    messageId: update.key.id,
-                    update: update,
-                    timestamp: new Date().toISOString()
+                await this.webhookService.sendEvent({
+                    sessionId: session.id,
+                    webhookUrl: session.webhookUrl,
+                    eventType: 'message.update',
+                    eventData: {
+                        sessionName: session.sessionName,
+                        messageId: update.key.id,
+                        update: update,
+                        timestamp: new Date().toISOString()
+                    }
                 });
             }
         } catch (error) {
@@ -294,7 +367,7 @@ export class SessionManager {
 
         // Also check database for sessions that might not be in memory
         try {
-            const dbSessions = await Session.findAll();
+            const dbSessions = await this.sessionModel.findAll();
             for (const dbSession of dbSessions) {
                 if (!this.sessions.has(dbSession.sessionName)) {
                     sessions.push({
@@ -326,7 +399,7 @@ export class SessionManager {
 
         // Check database if not in memory
         try {
-            const session = await Session.findBySessionName(sessionName);
+            const session = await this.sessionModel.findBySessionName(sessionName);
             if (session) {
                 return {
                     sessionName: session.sessionName,
@@ -346,9 +419,16 @@ export class SessionManager {
     async deleteSession(sessionName: string): Promise<void> {
         const sessionData = this.sessions.get(sessionName);
         if (sessionData) {
-            // Disconnect socket
-            await sessionData.socket.logout();
+            try {
+                // Disconnect socket gracefully
+                await sessionData.socket.logout();
+            } catch (error) {
+                printConsole.warning(`Error during socket logout: ${(error as Error).message}`);
+            }
+            
+            // Remove from memory
             this.sessions.delete(sessionName);
+            printConsole.info(`Session ${sessionName} removed from memory`);
 
             await this.deleteAndRemoveSession(sessionName);
         } else {
@@ -359,7 +439,7 @@ export class SessionManager {
     }
 
     private async deleteAndRemoveSession(sessionName: string): Promise<void> {
-        const session = await Session.findBySessionName(sessionName);
+        const session = await this.sessionModel.findBySessionName(sessionName);
         if (session) {
             await session.delete();
             printConsole.info(`Session ${sessionName} deleted from database`);
@@ -382,7 +462,7 @@ export class SessionManager {
         }
 
         // Find session in database
-        const session = await Session.findBySessionName(sessionName);
+        const session = await this.sessionModel.findBySessionName(sessionName);
         if (session) {
             // Reset session status
             session.status = 'qr_required';
@@ -400,24 +480,26 @@ export class SessionManager {
 
         // If not in memory, try to reload from database
         if (!sessionData) {
-            printConsole.info(`Session ${sessionName} not in memory, attempting to reload from database...`);
-            const session = await Session.findBySessionName(sessionName);
-            if (session && session.isActive) {
-                try {
-                    await this.initializeSession(session);
-                    sessionData = this.sessions.get(sessionName);
-                    printConsole.info(`Session ${sessionName} reloaded successfully`);
-                } catch (error) {
-                    printConsole.error(`Failed to reload session ${sessionName}: ${(error as Error).message}`);
-                    throw new Error(`Session ${sessionName} not found or not connected`);
-                }
-            } else {
-                throw new Error(`Session ${sessionName} not found or not active`);
-            }
+            printConsole.info(`Session ${sessionName} not in memory`);
+            throw new ErrorResponse(400, "SESSION_NOT_FOUND", `Session ${sessionName} not found or not active`)
+            // const session = await this.sessionModel.findBySessionName(sessionName);
+            // if (session && session.isActive) {
+            //     try {
+            //         await this.initializeSession(session);
+            //         sessionData = this.sessions.get(sessionName);
+            //     } catch (error) {
+            //         printConsole.error(`Failed to reload session ${sessionName}: ${(error as Error).message}`);
+            //         throw new ErrorResponse(400, "FAILED_TO_RELOAD_SESSION", `Session ${sessionName} not found or not connected`);
+
+            //     }
+            // } else {
+            //     throw new ErrorResponse(400, "SESSION_NOT_FOUND", `Session ${sessionName} not found or not active`);
+
+            // }
         }
 
-        if (!sessionData || sessionData.session.status !== 'connected') {
-            throw new Error(`Session ${sessionName} is not connected`);
+        if (!sessionData) {
+            throw new ErrorResponse(400, "SESSION_NOT_CONNECTED", `Session ${sessionName} is not connected`);
         }
 
         try {
@@ -447,22 +529,28 @@ export class SessionManager {
                     });
                     break;
                 default:
-                    throw new Error(`Unsupported message type: ${type}`);
+                    throw new ErrorResponse(400, "UNSUPPORTED_MESSAGE_TYPE", `Unsupported message type: ${type}`);
+
             }
 
             // Send webhook notification
-            await this.webhookService.sendEvent(sessionData.session.id, 'message.sent', {
-                sessionName,
-                to: normalizedTo,
-                messageType: type,
-                messageId: result?.key?.id,
-                timestamp: new Date().toISOString()
+            await this.webhookService.sendEvent({
+                sessionId: sessionData.session.id,
+                webhookUrl: sessionData.session.webhookUrl,
+                eventType: 'message.sent',
+                eventData: {
+                    sessionName,
+                    to: normalizedTo,
+                    messageType: type,
+                    messageId: result?.key?.id,
+                    timestamp: new Date().toISOString()
+                }
             });
 
             return result;
         } catch (error) {
             printConsole.error(`Failed to send message via session ${sessionName}: ${(error as Error).message}`);
-            throw error;
+            throw new ErrorResponse(500, "FAILED_TO_SEND_MESSAGE", `Failed to send message via session ${sessionName}`);
         }
     }
 }

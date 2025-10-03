@@ -1,11 +1,10 @@
 import mysql, { Pool, PoolConnection } from 'mysql2/promise';
 import { DatabaseConfig } from '../Types';
-import { printConsole } from '..';
+import { printConsole, sessionManager } from '..';
 import { ErrorResponse } from '../Helper/ResponseError';
-import SessionManager from '../Session/SessionManager';
 import { initDatabase } from './init_sql';
 
-const sessionManager = new SessionManager();
+
 export class Database {
     private pool: Pool | null = null;
     private config: DatabaseConfig;

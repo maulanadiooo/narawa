@@ -6,7 +6,9 @@ import { ErrorResponse } from "./Helper/ResponseError";
 import { ResponseApi } from "./Helper/ResponseApi";
 import { setServerInstance } from "./Helper/ServerInstance";
 import { ApiController } from "./Routes/api";
+import { SessionManager } from "./Session/SessionManager";
 
+export const sessionManager = new SessionManager();
 export const printConsole = new PrintConsole();
 export const db = new Database();
 await db.init();
@@ -25,7 +27,7 @@ const appServer = new Elysia()
   .onAfterHandle(({ request, set, start, body, headers, params, response }) => {
     const url = request.url;
     const ms = Date.now();
-    printConsole.info(`${request.method.toUpperCase()} ${url} ::: ${set.status} ::: ${ms - start} ms`)
+    // printConsole.info(`${request.method.toUpperCase()} ${url} ::: ${set.status} ::: ${ms - start} ms`)
   })
   .error({
     ErrorResponse

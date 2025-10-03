@@ -1,26 +1,25 @@
-import { v4 as uuidv4 } from 'uuid';
-import {Database} from '../Config/database';
+import { Database } from '../Config/database';
 import P from 'pino';
-import { WebhookEventType, WebhookPayload } from '../Types';
-import { db } from '..';
+import { IWebhookSendData, WebhookEventType, WebhookPayload } from '../Types';
+import { db, printConsole } from '..';
+import { UuidV7 } from '../Helper/uuid';
+
 
 export class WebhookService {
-    private logger: P.Logger;
-    private webhookUrl?: string;
 
     constructor() {
-        this.logger = P({ level: Bun.env.LOG_LEVEL || 'info' });
-        this.webhookUrl = Bun.env.WEBHOOK_URL;
+
     }
 
-    async sendEvent(sessionId: string, eventType: WebhookEventType, eventData: any): Promise<void> {
-        if (!this.webhookUrl) {
-            this.logger.warn('Webhook URL not configured, skipping event');
+    async sendEvent(props: IWebhookSendData): Promise<void> {
+        const { sessionId, webhookUrl, eventType, eventData } = props;
+        if (!webhookUrl) {
+            printConsole.warning('Webhook URL not configured, skipping event');
             return;
         }
-
+        let idEvent: string | undefined;
         try {
-            const eventId = uuidv4();
+            const eventId = UuidV7();
             const payload: WebhookPayload = {
                 id: eventId,
                 sessionId,
@@ -30,54 +29,64 @@ export class WebhookService {
             };
 
             // Store event in database
-            await this.storeEvent(sessionId, eventType, JSON.stringify(payload));
+            // idEvent = await this.storeEvent(sessionId, eventType, JSON.stringify(payload), webhookUrl);
 
-            const response = await fetch(this.webhookUrl, {
+            await fetch(webhookUrl, {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 headers: {
                     'Content-Type': 'application/json',
-                    'User-Agent': 'WaNara/1.0'
+                    'User-Agent': 'NaraWa/1.0',
+                    'x-webhook-id': idEvent ?? ""
+
                 }
             })
 
             // Update event status
-            await this.updateEventStatus(eventId, 'sent');
-
-            this.logger.info(`Webhook event sent successfully: ${eventType} for session ${sessionId}`);
-        } catch (error) {
-            this.logger.error(`Failed to send webhook event: ${(error as Error).message}`);
+            if (idEvent) {
+                await this.updateEventStatus(idEvent, 'sent');
+            }
             
+
+            printConsole.info(`Webhook event sent successfully: ${eventType} for session ${sessionId}`);
+        } catch (error) {
+            printConsole.error(`Failed to send webhook event: ${(error as Error).message}`);
+
             // Update event status to failed
-            if (eventData.id) {
+            if (idEvent) {
                 await this.updateEventStatus(eventData.id, 'failed');
             }
         }
     }
 
-    private async storeEvent(sessionId: string, eventType: WebhookEventType, eventData: string): Promise<void> {
+    private async storeEvent(sessionId: string, eventType: WebhookEventType, eventData: string, webhookUrl: string): Promise<string> {
+        const eventId = UuidV7();
         const sql = `
             INSERT INTO webhook_events (id, session_id, event_type, event_data, webhook_url, status)
             VALUES (?, ?, ?, ?, ?, ?)
         `;
-        
+
         await db.query(sql, [
-            uuidv4(),
+            eventId,
             sessionId,
             eventType,
             eventData,
-            this.webhookUrl,
+            webhookUrl,
             'pending'
         ]);
+        
+        return eventId;
     }
 
     async updateEventStatus(eventId: string, status: 'pending' | 'sent' | 'failed'): Promise<void> {
         const sql = `
             UPDATE webhook_events 
-            SET status = ?, updated_at = CURRENT_TIMESTAMP 
+            SET status = ?
             WHERE id = ?
         `;
-        
+
+        printConsole.success(`Updated event status to ${status} for event ${eventId}`);
+
         await db.query(sql, [status, eventId]);
     }
 
@@ -87,7 +96,7 @@ export class WebhookService {
             WHERE status = 'failed' AND retry_count < 3
             ORDER BY created_at ASC
         `;
-        
+
         return await db.query(sql);
     }
 
@@ -97,7 +106,7 @@ export class WebhookService {
             SET retry_count = retry_count + 1, status = 'pending'
             WHERE id = ?
         `;
-        
+
         await db.query(sql, [eventId]);
     }
 }

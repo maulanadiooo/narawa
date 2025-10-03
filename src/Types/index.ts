@@ -12,6 +12,7 @@ export interface ISession {
   createdAt?: Date;
   updatedAt?: Date;
   lastSeen?: Date;
+  webhookUrl?: string;
 }
 
 export type SessionStatus = 'connecting' | 'connected' | 'disconnected' | 'qr_required';
@@ -79,10 +80,19 @@ export interface WebhookEvent {
 
 export type WebhookEventType = 
   | 'session.connected'
+  | 'session.retry'
   | 'session.disconnected'
   | 'message.received'
   | 'message.update'
-  | 'message.sent';
+  | 'message.sent'
+  | 'session.conflict';
+
+export interface IWebhookSendData {
+  sessionId: string;
+  webhookUrl?: string;
+  eventType: WebhookEventType;
+  eventData: any;
+}
 
 export interface WebhookPayload {
   id: string;
@@ -123,6 +133,7 @@ export interface SessionData {
   created_at: Date;
   updated_at: Date;
   last_seen?: Date;
+  webhook_url?: string;
 }
 
 export interface MessageData {

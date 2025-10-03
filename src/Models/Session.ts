@@ -1,7 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import { ISession, SessionData, SessionStatus } from '../Types';
-import { Database } from '../Config/database';
 import { db } from '..';
+import { UuidV7 } from '../Helper/uuid';
 
 export class Session implements ISession {
     public id: string;
@@ -17,7 +16,7 @@ export class Session implements ISession {
     public webhookUrl?: string;
 
     constructor(data: Partial<ISession> & Partial<SessionData> = {}) {
-        this.id = data.id || uuidv4();
+        this.id = data.id || UuidV7();
         this.sessionName = data.session_name || data.sessionName || '';
         this.phoneNumber = data.phone_number || data.phoneNumber;
         this.status = data.status || 'qr_required';
@@ -27,6 +26,7 @@ export class Session implements ISession {
         this.createdAt = data.created_at || data.createdAt;
         this.updatedAt = data.updated_at || data.updatedAt;
         this.lastSeen = data.last_seen || data.lastSeen;
+        this.webhookUrl = data.webhook_url || data.webhookUrl;
     }
 
     async save(): Promise<void> {
@@ -41,7 +41,7 @@ export class Session implements ISession {
             is_active = VALUES(is_active),
             updated_at = CURRENT_TIMESTAMP
         `;
-        
+
         await db.query(sql, [
             this.id,
             this.sessionName,
@@ -69,7 +69,7 @@ export class Session implements ISession {
 
         values.push(this.id);
         const sql = `UPDATE sessions SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-        
+
         await db.query(sql, values);
     }
 
@@ -78,33 +78,33 @@ export class Session implements ISession {
         await db.query(sql, [this.id]);
     }
 
-    static async findById(id: string): Promise<Session | null> {
+    async findById(id: string): Promise<Session | null> {
         const sql = 'SELECT * FROM sessions WHERE id = ?';
         const rows = await db.query(sql, [id]);
         return rows.length > 0 ? new Session(rows[0]) : null;
     }
 
-    static async findBySessionName(sessionName: string): Promise<Session | null> {
+    async findBySessionName(sessionName: string): Promise<Session | null> {
         const sql = 'SELECT * FROM sessions WHERE session_name = ?';
         const rows = await db.query(sql, [sessionName]);
         return rows.length > 0 ? new Session(rows[0]) : null;
     }
 
-    static async findAll(activeOnly: boolean = true): Promise<Session[]> {
+    async findAll(activeOnly: boolean = true): Promise<Session[]> {
         let sql = 'SELECT * FROM sessions';
         const params: any[] = [];
-        
+
         if (activeOnly) {
             sql += ' WHERE is_active = ?';
             params.push(true);
         }
-        
+
         sql += ' ORDER BY created_at DESC';
         const rows = await db.query(sql, params);
         return rows.map((row: SessionData) => new Session(row));
     }
 
-    static async findByStatus(status: SessionStatus): Promise<Session[]> {
+    async findByStatus(status: SessionStatus): Promise<Session[]> {
         const sql = 'SELECT * FROM sessions WHERE status = ? AND is_active = ?';
         const rows = await db.query(sql, [status, true]);
         return rows.map((row: SessionData) => new Session(row));
