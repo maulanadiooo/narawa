@@ -1,4 +1,4 @@
-import { proto } from '@whiskeysockets/baileys';
+import { proto, WASocket } from '@whiskeysockets/baileys';
 
 // Session related types
 export interface ISession {
@@ -149,9 +149,9 @@ export interface WebhookEventData {
   created_at: Date;
 }
 
-// Service types
+
 export interface SessionManagerData {
-  socket: any;
+  socket: WASocket;
   session: ISession;
   saveCreds: () => Promise<void>;
 }
