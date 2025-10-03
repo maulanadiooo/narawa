@@ -519,7 +519,6 @@ export class SessionManager {
                     let dataImage: AnyMediaMessageContent = {
                         image: imageData.url ? { url: imageData.url } : imageData.buffer!,
                         caption: imageData.caption || '',
-                        jpegThumbnail: imageData.url ? undefined : imageData.buffer?.toString('base64'),
                         mimetype: imageData.mimetype || 'image/png'
                     }
                     result = await sessionData.socket.sendMessage(normalizedTo, dataImage);
@@ -533,6 +532,7 @@ export class SessionManager {
                         document: docData.url ? { url: docData.url } : docData.buffer!,
                         mimetype: docData.mimetype || 'application/octet-stream',
                         fileName: docData.fileName || 'document',
+                        jpegThumbnail: docData.url ? undefined : docData.buffer?.toString('base64'),
                         caption: docData.caption || ''
                     });
                     break;
