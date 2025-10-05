@@ -32,6 +32,7 @@ export class Database {
             printConsole.success('Database connected successfully');
             connection.release();
             await initDatabase(this.pool);
+            // load active sessions
             await sessionManager.loadActiveSessions();
         } catch (error) {
             printConsole.error(`Database connection failed: ${(error as Error).message}`);

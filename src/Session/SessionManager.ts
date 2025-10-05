@@ -23,10 +23,7 @@ export class SessionManager {
         this.webhookService = new WebhookService();
         this.sessionModel = new Session();
     }
-
-
-
-    private validateAndNormalizeJid(jid: string): string {
+    private validateAndNormalizeJid = (jid: string) => {
         try {
             // Normalize JID first
             const normalizedJid = jidNormalizedUser(jid);
@@ -60,7 +57,7 @@ export class SessionManager {
         }
     }
 
-    async loadActiveSessions(): Promise<void> {
+    loadActiveSessions = async (): Promise<void> => {
         try {
             printConsole.info('Loading active sessions from database...');
             const activeSessions = await this.sessionModel.findAll();
@@ -88,7 +85,7 @@ export class SessionManager {
         }
     }
 
-    async createSession(sessionName: string, webhookUrl?: string): Promise<ISession> {
+    createSession = async (sessionName: string, webhookUrl?: string): Promise<ISession> => {
         // Check if session already exists in memory
         if (this.sessions.has(sessionName)) {
             throw new ErrorResponse(400, "SESSION_IS_ACTIVE", `Session '${sessionName}' already exists and active in memory`);
@@ -121,7 +118,7 @@ export class SessionManager {
 
     }
 
-    private async initializeSession(session: ISession): Promise<void> {
+    private initializeSession = async (session: ISession): Promise<void> => {
         try {
             const { state, saveCreds } = await useMultiFileAuthState(`./sessions/${session.sessionName}`);
 
@@ -129,17 +126,14 @@ export class SessionManager {
                 auth: state,
                 printQRInTerminal: false,
                 logger: this.logger,
-                browser: ['NaraWA', 'Chrome', '1.0.0'],
+                browser: Browsers.macOS('Google Chrome'),
                 generateHighQualityLinkPreview: true,
                 connectTimeoutMs: 60_000,
                 keepAliveIntervalMs: 30_000,
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5,
-                markOnlineOnConnect: true,
-                syncFullHistory: false,
-                getMessage: async (key) => {
-                    return undefined;
-                }
+                markOnlineOnConnect: false,
+                syncFullHistory: true,
             });
 
             // Store socket reference
@@ -177,7 +171,7 @@ export class SessionManager {
         }
     }
 
-    private async handleConnectionUpdate(session: ISession, update: Partial<ConnectionState>): Promise<void> {
+    private handleConnectionUpdate = async (session: ISession, update: Partial<ConnectionState>): Promise<void> => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -224,25 +218,6 @@ export class SessionManager {
                     }
                 }, 5000); // Wait 5 seconds before reconnecting
             }
-            // else if (isConflictError) {
-            //     printConsole.warning(`Session ${session.sessionName} conflict detected - stopping reconnection attempts`);
-            //     session.status = 'disconnected';
-            //     session.qrCode = undefined;
-            //     await (session as Session).save();
-
-            //     await this.webhookService.sendEvent({
-            //         sessionId: session.id,
-            //         webhookUrl: session.webhookUrl,
-            //         eventType: 'session.conflict',
-            //         eventData: {
-            //             sessionName: session.sessionName,
-            //             reason: 'Session conflict - another instance is running',
-            //             timestamp: new Date().toISOString()
-            //         }
-            //     });
-
-            //     this.deleteAndRemoveSession(session.sessionName);
-            // } 
             else {
                 printConsole.info(`Session ${session.sessionName} logged out`);
                 session.status = 'disconnected';
@@ -292,7 +267,7 @@ export class SessionManager {
         }
     }
 
-    private async handleMessages(session: ISession, m: any): Promise<void> {
+    private handleMessages = async (session: ISession, m: any): Promise<void> => {
         try {
             const messages = m.messages;
 
@@ -326,7 +301,7 @@ export class SessionManager {
         }
     }
 
-    private async handleMessageUpdates(session: ISession, updates: any[]): Promise<void> {
+    private handleMessageUpdates = async (session: ISession, updates: any[]): Promise<void> => {
         try {
             for (const update of updates) {
                 // Send webhook for message updates (delivery, read, etc.)
@@ -347,11 +322,11 @@ export class SessionManager {
         }
     }
 
-    async getSession(sessionName: string): Promise<SessionManagerData | undefined> {
+    getSession = (sessionName: string): SessionManagerData | undefined => {
         return this.sessions.get(sessionName);
     }
 
-    async getAllSessions(): Promise<Array<{ sessionName: string; status: string; phoneNumber?: string }>> {
+    getAllSessions = async (): Promise<Array<{ sessionName: string; status: string; phoneNumber?: string }>> => {
         const sessions: Array<{ sessionName: string; status: string; phoneNumber?: string }> = [];
 
         // Get sessions from memory
@@ -382,7 +357,7 @@ export class SessionManager {
         return sessions;
     }
 
-    async getSessionStatus(sessionName: string): Promise<{ sessionName: string; status: string; phoneNumber?: string; isActive: boolean; lastSeen?: Date } | null> {
+    getSessionStatus = async (sessionName: string): Promise<{ sessionName: string; status: string; phoneNumber?: string; isActive: boolean; lastSeen?: Date } | null> => {
         // Check memory first
         const sessionData = this.sessions.get(sessionName);
         if (sessionData) {
@@ -505,6 +480,10 @@ export class SessionManager {
             const normalizedTo = this.validateAndNormalizeJid(to);
             printConsole.info(`Sending ${type} message to: ${normalizedTo}`);
 
+            await this.sendRead(sessionName, to);
+            
+            await this.sendTyping(sessionName, to);
+
             let result: any;
 
             switch (type) {
@@ -559,6 +538,34 @@ export class SessionManager {
         } catch (error) {
             printConsole.error(`Failed to send message via session ${sessionName}: ${(error as Error).message}`);
             throw new ErrorResponse(500, "FAILED_TO_SEND_MESSAGE", `Failed to send message via session ${sessionName}`);
+        } finally {
+            await this.stopTyping(sessionName, to);
+        }
+    }
+
+    private sendRead = async (sessionName: string, to: string) => {
+        const sessionData = this.sessions.get(sessionName);
+        const normalizedTo = this.validateAndNormalizeJid(to);
+
+        if (sessionData) {
+            await sessionData.socket.readMessages([{ remoteJid: normalizedTo }]);
+        }
+    }
+    private stopTyping = async (sessionName: string, to: string) => {
+        const sessionData = this.sessions.get(sessionName);
+        const normalizedTo = this.validateAndNormalizeJid(to);
+
+        if (sessionData) {
+            await sessionData.socket.sendPresenceUpdate('paused', normalizedTo);
+        }
+    }
+
+    private sendTyping = async (sessionName: string, to: string) => {
+        const sessionData = this.sessions.get(sessionName);
+        const normalizedTo = this.validateAndNormalizeJid(to);
+
+        if (sessionData) {
+            await sessionData.socket.sendPresenceUpdate('composing', normalizedTo);
         }
     }
 }
