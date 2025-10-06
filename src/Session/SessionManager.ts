@@ -422,12 +422,12 @@ export class SessionManager {
             printConsole.info(`Session ${sessionName} deleted from database`);
         }
         // check folder exists
-        if (existsSync(`./sessions/${sessionName}`)) {
-            rmdirSync(`./sessions/${sessionName}`, { recursive: true });
-            printConsole.info(`Session ${sessionName} folder removed`);
-        } else {
-            printConsole.error(`Session ${sessionName} folder not found`);
-        }
+        // if (existsSync(`./sessions/${sessionName}`)) {
+        //     rmdirSync(`./sessions/${sessionName}`, { recursive: true });
+        //     printConsole.info(`Session ${sessionName} folder removed`);
+        // } else {
+        //     printConsole.error(`Session ${sessionName} folder not found`);
+        // }
     }
 
     async restartSession(sessionName: string): Promise<void> {
