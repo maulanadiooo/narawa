@@ -1,6 +1,7 @@
 import { ISession, SessionData, SessionStatus } from '../Types';
 import { db } from '..';
 import { UuidV7 } from '../Helper/uuid';
+import { ErrorResponse } from '../Helper/ResponseError';
 
 export class Session implements ISession {
     public id: string;
@@ -75,7 +76,17 @@ export class Session implements ISession {
 
     async delete(): Promise<void> {
         const sql = 'DELETE FROM sessions WHERE id = ?';
-        await db.query(sql, [this.id]);
+        const sqlSessionDetails = 'DELETE FROM session_details WHERE session_id = ?';
+        // transaction
+        try {
+            await db.beginTransaction();
+            await db.query(sqlSessionDetails, [this.id]);
+            await db.query(sql, [this.id]);
+            await db.commitTransaction();
+        } catch (error) {
+            await db.rollbackTransaction();
+            throw new ErrorResponse(500, 'DATABASE_DELETE_ERROR', 'Database delete error');
+        }
     }
 
     async findById(id: string): Promise<Session | null> {

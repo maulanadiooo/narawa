@@ -1,4 +1,4 @@
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers, AnyMediaMessageContent } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers, AnyMediaMessageContent, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import P from 'pino';
@@ -8,6 +8,7 @@ import { WebhookService } from '../Webhook/WebhookService';
 import { ISession, SessionManagerData, MessageData } from '../Types';
 import { PrintConsole } from '../Helper/PrintConsole';
 import { ErrorResponse } from '../Helper/ResponseError';
+import { useMySQLAuthState } from './MysqlAuth';
 
 const printConsole = new PrintConsole();
 
@@ -120,10 +121,13 @@ export class SessionManager {
 
     private initializeSession = async (session: ISession): Promise<void> => {
         try {
-            const { state, saveCreds } = await useMultiFileAuthState(`./sessions/${session.sessionName}`);
+            const { state, saveCreds, removeCreds } = await useMySQLAuthState(session.id);
 
             const socket = makeWASocket({
-                auth: state,
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, this.logger)
+                },
                 printQRInTerminal: false,
                 logger: this.logger,
                 browser: Browsers.macOS('Google Chrome'),

@@ -79,7 +79,6 @@ export const initDatabase = async (pool: Pool) => {
     const sqlTableSessionDetail = `CREATE TABLE IF NOT EXISTS session_details (
         id VARCHAR(36) PRIMARY KEY,
         session_id VARCHAR(36) NOT NULL,
-        name VARCHAR(256) NOT NULL,
         value JSON NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -121,12 +120,6 @@ export const initDatabase = async (pool: Pool) => {
             table: 'webhook_events',
             column: 'status',
             sql: `CREATE INDEX idx_webhook_events_status ON webhook_events(status);`
-        },
-        {
-            name: 'idx_session_details_name',
-            table: 'session_details',
-            column: 'name',
-            sql: `CREATE INDEX idx_session_details_name ON session_details(name);`
         }
     ]
 

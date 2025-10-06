@@ -7,6 +7,7 @@ import { initDatabase } from './init_sql';
 
 export class Database {
     private pool: Pool | null = null;
+    private txConn: PoolConnection | null = null;
     private config: DatabaseConfig;
 
     constructor() {
@@ -45,7 +46,8 @@ export class Database {
             if (!this.pool) {
                 throw new ErrorResponse(500, 'DATABASE_POOL_NOT_INITIALIZED', 'Database pool not initialized');
             }
-            const [rows] = await this.pool.execute(sql, params);
+            const executor = this.txConn ?? this.pool;
+            const [rows] = await executor.execute(sql, params);
             return rows as any[];
         } catch (error) {
             printConsole.error(`Database query error: ${(error as Error).message}`);
@@ -63,6 +65,40 @@ export class Database {
     async close(): Promise<void> {
         if (this.pool) {
             await this.pool.end();
+        }
+    }
+
+    async beginTransaction(): Promise<void> {
+        if (!this.pool) {
+            throw new ErrorResponse(500, 'DATABASE_POOL_NOT_INITIALIZED', 'Database pool not initialized');
+        }
+        if (this.txConn) {
+            // already in a transaction
+            return;
+        }
+        this.txConn = await this.pool.getConnection();
+        await this.txConn.beginTransaction();
+    }
+    
+    async commitTransaction(): Promise<void> {
+        if (!this.txConn) {
+            throw new ErrorResponse(500, 'NO_ACTIVE_TRANSACTION', 'No active transaction to commit');
+        }
+        await this.txConn.commit();
+        this.txConn.release();
+        this.txConn = null;
+    }
+
+    async rollbackTransaction(): Promise<void> {
+        if (!this.txConn) {
+            // nothing to rollback
+            return;
+        }
+        try {
+            await this.txConn.rollback();
+        } finally {
+            this.txConn.release();
+            this.txConn = null;
         }
     }
 }
