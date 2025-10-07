@@ -5,7 +5,8 @@ import {
     WAMessageUpdate,
     WAMessage,
     MessageUpsertType,
-    proto
+    proto,
+    downloadContentFromMessage
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
@@ -20,6 +21,7 @@ import { useMySQLAuthState } from './MysqlAuth';
 import { db } from '..';
 import { UuidV7 } from '../Helper/uuid';
 import { getAckString } from '../Helper/GetAckString';
+import { uploadFileToS3 } from '../Helper/UploadFileToS3';
 
 const printConsole = new PrintConsole();
 
@@ -301,14 +303,36 @@ export class SessionManager {
                 }
 
                 // check if image or not
-                const isImage = message.message?.imageMessage || 
-                message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
-                message.message?.associatedChildMessage?.message?.imageMessage
+                const protoImageMessage = message.message?.imageMessage ||
+                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
+                    message.message?.associatedChildMessage?.message?.imageMessage
 
                 const sessionData = this.sessions.get(session.sessionName);
-                if (sessionData && isImage) {
+                if (sessionData && protoImageMessage) {
                     // download image
-                    
+                    const stream = await downloadContentFromMessage({
+                        mediaKey: protoImageMessage.mediaKey,
+                        directPath: protoImageMessage.directPath,
+                        url: protoImageMessage.url
+                    }, 'image')
+                    const chunks: Uint8Array[] = []
+                    for await (const chunk of stream) chunks.push(chunk)
+                    let total = 0
+                    for (const c of chunks) total += c.length
+                    const buffer = Buffer.alloc(total)
+                    let offset = 0
+                    for (const c of chunks) {
+                        buffer.set(c, offset)
+                        offset += c.length
+                    }
+                    const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
+                    const url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                    const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                    if (isUploaded) {
+                        printConsole.success(`Image ${message.key.id} uploaded to S3 ${url}`);
+                    } else {
+                        printConsole.error(`Image ${message.key.id} failed to upload to S3`);
+                    }
                 }
 
 

@@ -22,9 +22,9 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "bun-types": "latest",
     "@types/qrcode": "^1.5.5",
-    "@types/uuid": "^11.0.0"
+    "@types/uuid": "^11.0.0",
+    "bun-types": "^1.2.23"
   },
   "module": "src/index.js"
 }
