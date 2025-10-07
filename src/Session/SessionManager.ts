@@ -1,4 +1,12 @@
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, ConnectionState, jidDecode, jidNormalizedUser, Browsers, AnyMediaMessageContent, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
+import {
+    makeWASocket, DisconnectReason,
+    ConnectionState, jidDecode, jidNormalizedUser, Browsers, AnyMediaMessageContent,
+    makeCacheableSignalKeyStore,
+    WAMessageUpdate,
+    WAMessage,
+    MessageUpsertType,
+    proto
+} from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import P from 'pino';
@@ -9,6 +17,9 @@ import { ISession, SessionManagerData, MessageData } from '../Types';
 import { PrintConsole } from '../Helper/PrintConsole';
 import { ErrorResponse } from '../Helper/ResponseError';
 import { useMySQLAuthState } from './MysqlAuth';
+import { db } from '..';
+import { UuidV7 } from '../Helper/uuid';
+import { getAckString } from '../Helper/GetAckString';
 
 const printConsole = new PrintConsole();
 
@@ -136,7 +147,7 @@ export class SessionManager {
                 keepAliveIntervalMs: 30_000,
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5,
-                markOnlineOnConnect: false,
+                markOnlineOnConnect: true,
                 syncFullHistory: true,
             });
 
@@ -271,7 +282,11 @@ export class SessionManager {
         }
     }
 
-    private handleMessages = async (session: ISession, m: any): Promise<void> => {
+    private handleMessages = async (session: ISession, m: {
+        messages: WAMessage[];
+        type: MessageUpsertType;
+        requestId?: string;
+    }): Promise<void> => {
         try {
             const messages = m.messages;
 
@@ -279,11 +294,24 @@ export class SessionManager {
                 // Validate and normalize the sender JID
                 let fromJid = message.key.remoteJid;
                 try {
-                    fromJid = this.validateAndNormalizeJid(message.key.remoteJid);
+                    fromJid = this.validateAndNormalizeJid(message.key.remoteJid || '');
                 } catch (error) {
                     printConsole.warning(`Invalid sender JID: ${message.key.remoteJid}, skipping message`);
                     continue;
                 }
+
+                // check if image or not
+                const isImage = message.message?.imageMessage || 
+                message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
+                message.message?.associatedChildMessage?.message?.imageMessage
+
+                const sessionData = this.sessions.get(session.sessionName);
+                if (sessionData && isImage) {
+                    // download image
+                    
+                }
+
+
 
                 // Send webhook for incoming messages
                 await this.webhookService.sendEvent({
@@ -299,16 +327,49 @@ export class SessionManager {
                         timestamp: new Date().toISOString()
                     }
                 });
+
+                // for now, only save from personal chat, ignore group and etc
+                if (fromJid.includes('s.whatsapp.net')) {
+                    await db.beginTransaction();
+                    const sql = 'INSERT INTO messages (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                    const params = [
+                        UuidV7(),
+                        session.id,
+                        message.key.id,
+                        message.key.fromMe,
+                        0,
+                        'message.received',
+                        typeof message.message === 'string' ? message.message : JSON.stringify(message.message),
+                        message.status ?? null,
+                        getAckString(message.status)
+                    ]
+                    await db.query(sql, params);
+                    await db.commitTransaction();
+                }
+
+
             }
         } catch (error) {
             printConsole.error(`Error handling messages for session ${session.sessionName}: ${(error as Error).message}`);
         }
     }
 
-    private handleMessageUpdates = async (session: ISession, updates: any[]): Promise<void> => {
+    private handleMessageUpdates = async (session: ISession, updates: WAMessageUpdate[]): Promise<void> => {
         try {
             for (const update of updates) {
                 // Send webhook for message updates (delivery, read, etc.)
+                const status = update.update.status
+                if (status) {
+                    const ackString = getAckString(status)
+                    const isRead = status === proto.WebMessageInfo.Status.READ || status === proto.WebMessageInfo.Status.PLAYED
+                    if (isRead) {
+                        printConsole.success(`Message ${update.key.id} marked as read for session ${session.sessionName}`);
+                    } else {
+                        printConsole.warning(`Message ${update.key.id} marked as ${ackString} for session ${session.sessionName}`);
+                    }
+                    const sqlUpdateMessageReadu = `UPDATE messages SET is_read = ?, ack = ?, ack_string = ? WHERE message_id = ?`;
+                    await db.query(sqlUpdateMessageReadu, [isRead, status, ackString, update.key.id]);
+                }
                 await this.webhookService.sendEvent({
                     sessionId: session.id,
                     webhookUrl: session.webhookUrl,
@@ -484,10 +545,6 @@ export class SessionManager {
             const normalizedTo = this.validateAndNormalizeJid(to);
             printConsole.info(`Sending ${type} message to: ${normalizedTo}`);
 
-            await this.sendRead(sessionName, to);
-            
-            await this.sendTyping(sessionName, to);
-
             let result: any;
 
             switch (type) {
@@ -542,20 +599,45 @@ export class SessionManager {
         } catch (error) {
             printConsole.error(`Failed to send message via session ${sessionName}: ${(error as Error).message}`);
             throw new ErrorResponse(500, "FAILED_TO_SEND_MESSAGE", `Failed to send message via session ${sessionName}`);
-        } finally {
-            await this.stopTyping(sessionName, to);
         }
     }
 
-    private sendRead = async (sessionName: string, to: string) => {
-        const sessionData = this.sessions.get(sessionName);
+    sendRead = async (session: ISession, to: string, messageIds?: string[]) => {
+        const sessionData = this.sessions.get(session.sessionName);
         const normalizedTo = this.validateAndNormalizeJid(to);
+        printConsole.info(`Sending read to: ${normalizedTo}`);
 
         if (sessionData) {
-            await sessionData.socket.readMessages([{ remoteJid: normalizedTo }]);
+            if (messageIds && messageIds.length > 0) {
+                let dataToRead = []
+                for (const x of messageIds) {
+                    dataToRead.push({ remoteJid: normalizedTo, id: x })
+                }
+                await sessionData.socket.readMessages(dataToRead);
+            } else {
+                // check databasse
+                const sql = 'SELECT message_id, id FROM messages WHERE session_id = ? AND from_me = ? AND is_read = ? AND event = ?';
+                const dataMessages = await db.query(sql, [session.id, 0, 0, 'message.received']);
+
+                let dataToRead = []
+                for (const x of dataMessages) {
+                    dataToRead.push({ remoteJid: normalizedTo, id: x.message_id })
+                }
+                if (dataToRead.length > 0) {
+                    await sessionData.socket.readMessages(dataToRead);
+                    const ids = dataMessages.map((x: any) => x.id);
+                    if (ids.length) {
+                        const placeholders = ids.map(() => '?').join(',');
+                        await db.query(`UPDATE messages SET is_read = ? WHERE id IN (${placeholders})`, [1, ...ids]);
+                    }
+                } else {
+                    printConsole.warning(`No messages to read for session ${session.sessionName}`);
+                }
+            }
+
         }
     }
-    private stopTyping = async (sessionName: string, to: string) => {
+    stopTyping = async (sessionName: string, to: string) => {
         const sessionData = this.sessions.get(sessionName);
         const normalizedTo = this.validateAndNormalizeJid(to);
 
@@ -564,7 +646,7 @@ export class SessionManager {
         }
     }
 
-    private sendTyping = async (sessionName: string, to: string) => {
+    sendTyping = async (sessionName: string, to: string) => {
         const sessionData = this.sessions.get(sessionName);
         const normalizedTo = this.validateAndNormalizeJid(to);
 

@@ -50,19 +50,19 @@ export const initDatabase = async (pool: Pool) => {
         is_active BOOLEAN DEFAULT TRUE,
         webhook_url TEXT DEFAULT NULL
     );`
-    const sqlTableMessage = `CREATE TABLE IF NOT EXISTS messages (
-        id VARCHAR(36) PRIMARY KEY,
-        session_id VARCHAR(36) NOT NULL,
-        message_id VARCHAR(100),
-        to_number VARCHAR(20) NOT NULL,
-        message_type ENUM('text', 'image', 'document', 'audio', 'video') NOT NULL,
-        content TEXT,
-        file_path VARCHAR(500),
-        status ENUM('pending', 'sent', 'delivered', 'read', 'failed') DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    );`
+    // const sqlTableMessage = `CREATE TABLE IF NOT EXISTS messages (
+    //     id VARCHAR(36) PRIMARY KEY,
+    //     session_id VARCHAR(36) NOT NULL,
+    //     message_id VARCHAR(100),
+    //     to_number VARCHAR(20) NOT NULL,
+    //     message_type ENUM('text', 'image', 'document', 'audio', 'video') NOT NULL,
+    //     content TEXT,
+    //     file_path VARCHAR(500),
+    //     status ENUM('pending', 'sent', 'delivered', 'read', 'failed') DEFAULT 'pending',
+    //     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    //     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    //     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    // );`
 
     const sqlTableWebhook = `CREATE TABLE IF NOT EXISTS webhook_events (
         id VARCHAR(36) PRIMARY KEY,
@@ -84,6 +84,23 @@ export const initDatabase = async (pool: Pool) => {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )`
 
+    const sqlTableMessages = `CREATE TABLE IF NOT EXISTS messages (
+        id VARCHAR(36) PRIMARY KEY,
+        session_id VARCHAR(36) NOT NULL,
+        from_me BOOLEAN NOT NULL,
+        message_id VARCHAR(100) NOT NULL,
+        is_read BOOLEAN NOT NULL,
+        ack INT DEFAULT NULL,
+        ack_string VARCHAR(100) DEFAULT NULL,
+        event VARCHAR(100) NOT NULL,
+        data JSON NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );`
+
+
+
     const indexing = [
         {
             name: 'idx_sessions_status',
@@ -103,12 +120,12 @@ export const initDatabase = async (pool: Pool) => {
             column: 'session_id',
             sql: `CREATE INDEX idx_messages_session ON messages(session_id);`
         },
-        {
-            name: 'idx_messages_status',
-            table: 'messages',
-            column: 'status',
-            sql: `CREATE INDEX idx_messages_status ON messages(status);`
-        },
+        // {
+        //     name: 'idx_messages_status',
+        //     table: 'messages',
+        //     column: 'status',
+        //     sql: `CREATE INDEX idx_messages_status ON messages(status);`
+        // },
         {
             name: 'idx_webhook_events_session',
             table: 'webhook_events',
@@ -120,6 +137,42 @@ export const initDatabase = async (pool: Pool) => {
             table: 'webhook_events',
             column: 'status',
             sql: `CREATE INDEX idx_webhook_events_status ON webhook_events(status);`
+        },
+        {
+            name: 'idx_webhook_messages_from_me',
+            table: 'messages',
+            column: 'from_me',
+            sql: `CREATE INDEX idx_webhook_messages_from_me ON messages(from_me);`
+        },
+        {
+            name: 'idx_webhook_messages_message_id',
+            table: 'messages',
+            column: 'message_id',
+            sql: `CREATE INDEX idx_webhook_messages_message_id ON messages(message_id);`
+        },
+        {
+            name: 'idx_webhook_messages_is_read',
+            table: 'messages',
+            column: 'is_read',
+            sql: `CREATE INDEX idx_webhook_messages_is_read ON messages(is_read);`
+        },
+        {
+            name: 'idx_webhook_messages_session_id',
+            table: 'messages',
+            column: 'session_id',
+            sql: `CREATE INDEX idx_webhook_messages_session_id ON messages(session_id);`
+        },
+        {
+            name: 'idx_webhook_messages_created_at',
+            table: 'messages',
+            column: 'created_at',
+            sql: `CREATE INDEX idx_webhook_messages_created_at ON messages(created_at);`
+        },
+        {
+            name: 'idx_webhook_messages_ack_string',
+            table: 'messages',
+            column: 'ack_string',
+            sql: `CREATE INDEX idx_webhook_messages_ack_string ON messages(ack_string);`
         }
     ]
 
@@ -132,14 +185,17 @@ export const initDatabase = async (pool: Pool) => {
         await pool.execute(sqlSessionTable);
         printConsole.success('Sessions table ready');
 
-        await pool.execute(sqlTableMessage);
-        printConsole.success('Messages table ready');
+        // await pool.execute(sqlTableMessage);
+        // printConsole.success('Messages table ready');
 
         await pool.execute(sqlTableWebhook);
         printConsole.success('Webhook events table ready');
 
         await pool.execute(sqlTableSessionDetail);
         printConsole.success('Session details table ready');
+
+        await pool.execute(sqlTableMessages);
+        printConsole.success('Messages table ready');
 
         // Create indexes if they don't exist
         printConsole.info('Checking and creating indexes...');

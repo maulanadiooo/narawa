@@ -1,6 +1,7 @@
 import Elysia from "elysia";
-import { GetQrDataQuery, SendImageDto, SendTextBody, SessionCreateDto, SessionParamsDto } from "./Session.types";
+import { GetQrDataQuery, SessionCreateDto, SessionParamsDto } from "./Session.types";
 import { SessionService } from "./Service";
+import { ChatController } from "./Chat/Controller";
 const sessionService = new SessionService();
 
 
@@ -26,24 +27,7 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
     }, {
         params: SessionParamsDto,
     })
-    .post("/send-text", async ({ set, body, params }) => {
-        return sessionService.SendText({ set, body, params })
-    }, {
-        body: SendTextBody,
-        params: SessionParamsDto
-    })
-    .post("/send-image", async ({ set, body, params }) => {
-        return sessionService.SendImage({ set, body, params })
-    }, {
-        body: SendImageDto,
-        params: SessionParamsDto
-    })
-    .post("/send-document", async ({ set, body, params }) => {
-        return sessionService.SendDocument({ set, body, params })
-    }, {
-        body: SendImageDto,
-        params: SessionParamsDto
-    })
+    .use(ChatController)
 
 export const SessionController = new Elysia({ prefix: "/sessions" })
     .post("/create", async ({ set, body }) => {
