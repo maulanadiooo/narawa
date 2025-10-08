@@ -152,7 +152,7 @@ export class SessionManager {
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5,
                 markOnlineOnConnect: true,
-                syncFullHistory: false,
+                syncFullHistory: true,
             });
 
             // Store socket reference
@@ -513,24 +513,36 @@ export class SessionManager {
                 // TODO:: need to save for other jid identifier ?
                 // for now, only save from personal chat, ignore group and etc
                 if (fromJid.includes('s.whatsapp.net')) {
-                    await db.beginTransaction();
-                    const sql = 'INSERT INTO messages (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-                    const params = [
-                        UuidV7(),
-                        session.id,
-                        message.key.id,
-                        message.key.fromMe,
-                        0,
-                        'message.received',
-                        message.message ? typeof message.message === 'string' ? message.message : JSON.stringify(message.message) : null,
-                        message.status ?? null,
-                        getAckString(message.status),
-                        isMedia ? 1 : 0,
-                        url,
-                        mediaType
-                    ]
-                    await db.query(sql, params);
-                    await db.commitTransaction();
+                    try {
+                        // Check if session still exists in database before inserting message
+                        const sessionExists = await this.sessionModel.findById(session.id);
+                        if (!sessionExists) {
+                            printConsole.warning(`Session ${session.sessionName} not found in database, skipping message save`);
+                            return;
+                        }
+
+                        await db.beginTransaction();
+                        const sql = 'INSERT INTO messages (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                        const params = [
+                            UuidV7(),
+                            session.id,
+                            message.key.id,
+                            message.key.fromMe,
+                            0,
+                            'message.received',
+                            message.message ? typeof message.message === 'string' ? message.message : JSON.stringify(message.message) : null,
+                            message.status ?? null,
+                            getAckString(message.status),
+                            isMedia ? 1 : 0,
+                            url,
+                            mediaType
+                        ]
+                        await db.query(sql, params);
+                        await db.commitTransaction();
+                    } catch (error) {
+                        await db.rollbackTransaction();
+                        printConsole.error(`Failed to save message for session ${session.sessionName}: ${(error as Error).message}`);
+                    }
                 }
 
 
