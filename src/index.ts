@@ -7,6 +7,7 @@ import { ResponseApi } from "./Helper/ResponseApi";
 import { setServerInstance } from "./Helper/ServerInstance";
 import { ApiController } from "./Routes/api";
 import { SessionManager } from "./Session/SessionManager";
+import { staticPlugin } from '@elysiajs/static'
 
 export const sessionManager = new SessionManager();
 export const printConsole = new PrintConsole();
@@ -15,6 +16,10 @@ await db.init();
 Bun.env.TZ = "Etc/UTC";
 
 const appServer = new Elysia()
+  .use(staticPlugin({
+    prefix: "/media",
+    assets: "./public"
+  }))
   .use(cors({
     methods: "*",
     origin: Bun.env.MODE === "prod" ? String(Bun.env.ALOWED_ORIGIN).split(",") : ["*"],

@@ -308,32 +308,51 @@ export class SessionManager {
                     message.message?.associatedChildMessage?.message?.imageMessage
 
                 const sessionData = this.sessions.get(session.sessionName);
-                if (sessionData && protoImageMessage) {
-                    // download image
-                    const stream = await downloadContentFromMessage({
-                        mediaKey: protoImageMessage.mediaKey,
-                        directPath: protoImageMessage.directPath,
-                        url: protoImageMessage.url
-                    }, 'image')
-                    const chunks: Uint8Array[] = []
-                    for await (const chunk of stream) chunks.push(chunk)
-                    let total = 0
-                    for (const c of chunks) total += c.length
-                    const buffer = Buffer.alloc(total)
-                    let offset = 0
-                    for (const c of chunks) {
-                        buffer.set(c, offset)
-                        offset += c.length
-                    }
-                    const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
-                    const url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                    const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                    if (isUploaded) {
-                        printConsole.success(`Image ${message.key.id} uploaded to S3 ${url}`);
-                    } else {
-                        printConsole.error(`Image ${message.key.id} failed to upload to S3`);
+                const isSaveMedia = Bun.env.SAVE_MEDIA === 'true';
+                const saveMediaTo = Bun.env.SAVE_MEDIA_TO;
+                if (isSaveMedia) {
+                    if (sessionData && protoImageMessage) {
+                        // download image
+                        const stream = await downloadContentFromMessage({
+                            mediaKey: protoImageMessage.mediaKey,
+                            directPath: protoImageMessage.directPath,
+                            url: protoImageMessage.url
+                        }, 'image')
+                        const chunks: Uint8Array[] = []
+                        for await (const chunk of stream) chunks.push(chunk)
+                        let total = 0
+                        for (const c of chunks) total += c.length
+                        const buffer = Buffer.alloc(total)
+                        let offset = 0
+                        for (const c of chunks) {
+                            buffer.set(c, offset)
+                            offset += c.length
+                        }
+                        let url = ''
+                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
+                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                            if (isUploaded) {
+                                printConsole.success(`Image ${message.key.id} uploaded to S3 ${url}`);
+                            } else {
+                                printConsole.error(`Image ${message.key.id} failed to upload to S3`);
+                            }
+                        } else {
+                            const keyPath = `${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
+                            const pathToSave = `./public/${keyPath}`
+                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                            if (!websiteUrl?.endsWith('/')) {
+                                websiteUrl += '/'
+                            }
+                            url = `${websiteUrl}media/${keyPath}`
+                            printConsole.success(`Image ${message.key.id} saved to local ${url}`);
+                        }
+
                     }
                 }
+
 
 
 

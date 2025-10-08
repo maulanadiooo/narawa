@@ -2,6 +2,7 @@ import { createConnection } from 'mysql2/promise'
 import { BufferJSON, initAuthCreds, fromObject } from './utils'
 import { MySQLConfig, sqlData, sqlConnection, AuthenticationCreds, AuthenticationState, SignalDataTypeMap } from './types.mysqlauth'
 import { db } from '..'
+import { UuidV7 } from '../Helper/uuid'
 
 /**
  * Stores the full authentication state in mysql
@@ -43,7 +44,7 @@ export const useMySQLAuthState = async (session_id: string): Promise<{ state: Au
     }
 
     const readData = async (id: string) => {
-        const data = await query(`SELECT value FROM ${tableName} WHERE id = ? AND session_id = ?`, [id, session_id])
+        const data = await query(`SELECT value FROM ${tableName} WHERE name = ? AND session_id = ?`, [id, session_id])
         if (!data[0]?.value) {
             return null
         }
@@ -54,15 +55,15 @@ export const useMySQLAuthState = async (session_id: string): Promise<{ state: Au
 
     const writeData = async (id: string, value: object) => {
         const valueFixed = typeof value === 'object' ? JSON.stringify(value, BufferJSON.replacer) : value
-        await query(`INSERT INTO ${tableName} (session_id, id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?`, [session_id, id, valueFixed, valueFixed])
+        await query(`INSERT INTO ${tableName} (id, session_id, name, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?`, [UuidV7(), session_id, id, valueFixed, valueFixed])
     }
 
     const removeData = async (id: string) => {
-        await query(`DELETE FROM ${tableName} WHERE id = ? AND session_id = ?`, [id, session_id])
+        await query(`DELETE FROM ${tableName} WHERE name = ? AND session_id = ?`, [id, session_id])
     }
 
     const clearAll = async () => {
-        await query(`DELETE FROM ${tableName} WHERE id != 'creds' AND session_id = ?`, [session_id])
+        await query(`DELETE FROM ${tableName} WHERE name != 'creds' AND session_id = ?`, [session_id])
     }
 
     const removeAll = async () => {
