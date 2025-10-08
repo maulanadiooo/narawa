@@ -8,6 +8,7 @@ import { setServerInstance } from "./Helper/ServerInstance";
 import { ApiController } from "./Routes/api";
 import { SessionManager } from "./Session/SessionManager";
 import { staticPlugin } from '@elysiajs/static'
+import { openapi } from '@elysiajs/openapi'
 
 export const sessionManager = new SessionManager();
 export const printConsole = new PrintConsole();
@@ -105,6 +106,39 @@ const appServer = new Elysia()
       })
     }
   })
+  .use(openapi({
+    path: "/documentation",
+    exclude: {
+      paths: [RegExp("^\\/media")]
+    },
+    documentation: {
+      info: {
+        title: "NaraWa API",
+        version: "1.0.0",
+        description: "NaraWa API",
+        contact: {
+          name: "Dio Maulana",
+          email: "maulanadiodm@gmail.com"
+        }
+      },
+      components: {
+        securitySchemes: {
+          apiKey: {
+            type: 'apiKey',
+            in: 'headers',
+            name: 'x-apikey',
+            description: 'Your apikey should in header with x-apikey'
+          }
+        }
+      },
+      servers: [
+          {
+              url: Bun.env.BE_URL ?? 'url not publish yet',
+              description: 'Our base url API'
+          },
+      ],
+    },
+  }))
   .use(ApiController)
   .onStop((stop) => {
     printConsole.error(`Server Stopped!! ${stop.error}`)

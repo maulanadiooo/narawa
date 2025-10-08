@@ -15,9 +15,9 @@ export class ChatService extends SessionService {
     SendText = async (props: ISendText) => {
         const { params, set, body } = props;
         const { sessionName } = params;
-        const { to, message } = body;
+        const { to, message, quotedMessageId } = body;
         await this.checkSession(sessionName);
-        await sessionManager.sendMessage(sessionName, to, message, 'text');
+        await sessionManager.sendMessage(sessionName, to, message, 'text', quotedMessageId);
         return ResponseApiSuccess({
             set,
         })

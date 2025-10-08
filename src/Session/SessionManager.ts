@@ -7,7 +7,8 @@ import {
     MessageUpsertType,
     proto,
     downloadContentFromMessage,
-    MediaType
+    MediaType,
+    MiscMessageGenerationOptions
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
@@ -214,7 +215,7 @@ export class SessionManager {
             //                       lastDisconnect?.error?.message?.includes('replaced');
 
             if (shouldReconnect) {
-                printConsole.info(`Reconnecting session ${session.sessionName}...`);
+                printConsole.info(`Reconnecting session ${session.sessionName} ${(lastDisconnect?.error as Boom)?.output?.statusCode}...`);
                 session.status = 'connecting';
                 await (session as Session).save();
                 await this.webhookService.sendEvent({
@@ -493,8 +494,6 @@ export class SessionManager {
                 // TODO: more message type to save, like location, contact, etc
 
 
-
-
                 // Send webhook for incoming messages
                 await this.webhookService.sendEvent({
                     sessionId: session.id,
@@ -504,8 +503,7 @@ export class SessionManager {
                         sessionName: session.sessionName,
                         messageId: message.key.id,
                         from: fromJid,
-                        message: message.message,
-                        m: m,
+                        message: message,
                         timestamp: new Date().toISOString()
                     }
                 });
@@ -530,7 +528,7 @@ export class SessionManager {
                             message.key.fromMe,
                             0,
                             'message.received',
-                            message.message ? typeof message.message === 'string' ? message.message : JSON.stringify(message.message) : null,
+                            message ? typeof message === 'string' ? message : JSON.stringify(message) : null,
                             message.status ?? null,
                             getAckString(message.status),
                             isMedia ? 1 : 0,
@@ -732,7 +730,7 @@ export class SessionManager {
         }
     }
 
-    async sendMessage(sessionName: string, to: string, message: string | MessageData, type: 'text' | 'image' | 'document' = 'text'): Promise<any> {
+    async sendMessage(sessionName: string, to: string, message: string | MessageData, type: 'text' | 'image' | 'document' = 'text', quotedMessageId?: string): Promise<any> {
         // Check if session exists in memory
         let sessionData = this.sessions.get(sessionName);
 
@@ -767,9 +765,23 @@ export class SessionManager {
 
             let result: any;
 
+            let options: MiscMessageGenerationOptions = {};
+            if (quotedMessageId) {
+                const sqlMessage = `SELECT data FROM messages WHERE message_id = ? AND from_me = ? `
+                const data = await db.query(sqlMessage, [quotedMessageId, 0])
+                if (data.length > 0) {
+                    options = {
+                        ...options,
+                        quoted: {
+                            ...data[0].data as WAMessage
+                        }
+                    }
+                }
+            }
+
             switch (type) {
                 case 'text':
-                    result = await sessionData.socket.sendMessage(normalizedTo, { text: message as string });
+                    result = await sessionData.socket.sendMessage(normalizedTo, { text: message as string }, options);
                     break;
                 case 'image':
                     const imageData = message as MessageData;
@@ -781,7 +793,7 @@ export class SessionManager {
                         caption: imageData.caption || '',
                         mimetype: imageData.mimetype || 'image/png'
                     }
-                    result = await sessionData.socket.sendMessage(normalizedTo, dataImage);
+                    result = await sessionData.socket.sendMessage(normalizedTo, dataImage, options);
                     break;
                 case 'document':
                     const docData = message as MessageData;
@@ -794,7 +806,7 @@ export class SessionManager {
                         fileName: docData.fileName || 'document',
                         jpegThumbnail: docData.url ? undefined : docData.buffer?.toString('base64'),
                         caption: docData.caption || ''
-                    });
+                    }, options);
                     break;
                 default:
                     throw new ErrorResponse(400, "UNSUPPORTED_MESSAGE_TYPE", `Unsupported message type: ${type}`);

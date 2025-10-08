@@ -10,6 +10,7 @@
     "@aws-sdk/client-s3": "^3.893.0",
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/cron": "^1.4.1",
+    "@elysiajs/openapi": "^1.4.11",
     "@elysiajs/static": "^1.4.0",
     "@whiskeysockets/baileys": "7.0.0-rc.5",
     "curve25519-js": "^0.0.4",

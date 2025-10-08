@@ -7,7 +7,8 @@ export const SendTextBody = t.Object({
     }),
     message: t.String({
         error: "Message is required"
-    })
+    }),
+    quotedMessageId: t.Optional(t.String())
 })
 
 export interface ISendText extends BaseSessionParams {

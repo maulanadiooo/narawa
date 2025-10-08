@@ -2,6 +2,7 @@ import Elysia from "elysia";
 import { SessionParamsDto } from "../Session.types";
 import { ReadBodyDto, SendImageDto, SendTextBody, TypingBodyDto } from "./Chat.types";
 import { ChatService } from "./Service";
+import { ApiKeyHeader } from "../../../Helper/GlobalInterfaceService";
 const chatService = new ChatService();
 
 export const ChatController = new Elysia({ prefix: "/chat" })
@@ -10,35 +11,41 @@ export const ChatController = new Elysia({ prefix: "/chat" })
         return chatService.SendText({ set, body, params })
     }, {
         body: SendTextBody,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
     .post("/send-image", async ({ set, body, params }) => {
         return chatService.SendImage({ set, body, params })
     }, {
         body: SendImageDto,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
     .post("/send-document", async ({ set, body, params }) => {
         return chatService.SendDocument({ set, body, params })
     }, {
         body: SendImageDto,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
     .patch("/read", async ({ set, body, params }) => {
         return chatService.Read({ set, body, params })
     }, {
         body: ReadBodyDto,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
     .post("/typing", async ({ set, body, params }) => {
         return chatService.Typing({ set, body, params })
     }, {
         body: TypingBodyDto,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
     .patch("/stop-typing", async ({ set, body, params }) => {
         return chatService.StopTyping({ set, body, params })
     }, {
         body: TypingBodyDto,
-        params: SessionParamsDto
+        params: SessionParamsDto,
+        headers: ApiKeyHeader
     })
