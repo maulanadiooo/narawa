@@ -1,13 +1,13 @@
 # NaraWa - WhatsApp API using Baileys & Elysia.js
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
-[![Bun](https://img.shields.io/badge/Bun-1.0%2B-black.svg)](https://bun.sh/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.2%2B-black.svg)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-blue.svg)](https://www.typescriptlang.org/)
 
 > A robust, production-ready WhatsApp API implementation built with Baileys and Elysia.js, featuring multi-session support, MySQL database integration, and comprehensive webhook functionality.
 
-## Features
+## Features (Minimum)
 
 ### Core Features
 - **Multi-Session Support** - Manage multiple WhatsApp accounts simultaneously
