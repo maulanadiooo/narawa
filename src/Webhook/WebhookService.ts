@@ -25,7 +25,7 @@ export class WebhookService {
                 sessionId,
                 eventType,
                 data: eventData,
-                timestamp: new Date().toISOString()
+                timestamp: Date.now().toString()
             };
 
             // Store event in database
