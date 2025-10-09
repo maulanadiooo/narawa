@@ -85,7 +85,8 @@ export type WebhookEventType =
   | 'message.received'
   | 'message.update'
   | 'message.sent'
-  | 'session.conflict';
+  | 'session.conflict'
+  | 'message.history.set'
 
 export interface IWebhookSendData {
   sessionId: string;
@@ -107,7 +108,7 @@ export interface WebhookPayload {
     phoneNumber?: string;
     timestamp: string;
   };
-  timestamp: string;
+  timestamp: number;
 }
 
 export interface SetWebhookRequest {

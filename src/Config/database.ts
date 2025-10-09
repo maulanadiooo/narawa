@@ -18,7 +18,7 @@ export class Database {
             password: Bun.env.DB_PASSWORD || '',
             database: Bun.env.DB_NAME || 'whatsapp_sessions',
             waitForConnections: true,
-            connectionLimit: 10,
+            connectionLimit: 0,
             queueLimit: 0,
         };
         // this.init();

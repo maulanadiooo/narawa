@@ -98,6 +98,8 @@ export const initDatabase = async (pool: Pool) => {
         ack_string VARCHAR(100) DEFAULT NULL,
         event VARCHAR(100) NOT NULL,
         data JSON NULL,
+        message_text TEXT DEFAULT NULL,
+        message_timestamp BIGINT DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -181,7 +183,7 @@ export const initDatabase = async (pool: Pool) => {
         {
             name: 'idx_webhook_session_details_name',
             table: 'session_details',
-            column: 'ack_string',
+            column: 'name',
             sql: `CREATE INDEX idx_webhook_session_details_name ON session_details(name);`
         },
         {
@@ -189,7 +191,13 @@ export const initDatabase = async (pool: Pool) => {
             table: 'session_details',
             column: 'name',
             sql: `ALTER TABLE session_details ADD UNIQUE KEY unique_session_name (session_id, name);`
-        }
+        },
+        {
+            name: 'idx_webhook_messages_message_timestamp',
+            table: 'messages',
+            column: 'message_timestamp',
+            sql: `CREATE INDEX idx_webhook_messages_message_timestamp ON messages(message_timestamp);`
+        },
     ]
 
     try {

@@ -147,6 +147,12 @@ const appServer = new Elysia()
   .onStop((stop) => {
     printConsole.error(`Server Stopped!! ${stop.error}`)
     printConsole.error(`${stop.error}`)
+    printConsole.info(`Restarting server in 2 seconds...`)
+    // restart server
+    // setTimeout(() => {
+    //   Bun.spawn([Bun.env.NODE_ENV === "prod" ? "npm" : "bun", "run", "start"])
+    //   printConsole.success(`Server restarted!!`)
+    // }, 1000);
   })
   .listen({
     port: Bun.env.PORT ?? 6666,

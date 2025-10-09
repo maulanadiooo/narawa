@@ -22,10 +22,10 @@ export class WebhookService {
             const eventId = UuidV7();
             const payload: WebhookPayload = {
                 id: eventId,
-                sessionId,
                 eventType,
+                sessionId,
                 data: eventData,
-                timestamp: Date.now().toString()
+                timestamp: Date.now()
             };
 
             // Store event in database

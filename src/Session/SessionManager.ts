@@ -8,7 +8,9 @@ import {
     proto,
     downloadContentFromMessage,
     MediaType,
-    MiscMessageGenerationOptions
+    MiscMessageGenerationOptions,
+    Chat,
+    Contact,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
@@ -146,13 +148,13 @@ export class SessionManager {
                 },
                 printQRInTerminal: false,
                 logger: this.logger,
-                browser: Browsers.macOS('Google Chrome'),
+                browser: Browsers.macOS('Desktop'),
                 generateHighQualityLinkPreview: true,
                 connectTimeoutMs: 60_000,
                 keepAliveIntervalMs: 30_000,
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5,
-                markOnlineOnConnect: true,
+                markOnlineOnConnect: false,
                 syncFullHistory: true,
             });
 
@@ -180,6 +182,10 @@ export class SessionManager {
                 await this.handleMessageUpdates(session, m);
             });
 
+            socket.ev.on('messaging-history.set', async (m) => {
+                await this.handleMessagingHistorySet(session, m);
+            })
+
             // Update session status
             session.status = 'connecting';
             await (session as Session).save();
@@ -192,7 +198,7 @@ export class SessionManager {
     }
 
     private handleConnectionUpdate = async (session: ISession, update: Partial<ConnectionState>): Promise<void> => {
-        const { connection, lastDisconnect, qr } = update;
+        const { connection, lastDisconnect, qr, isNewLogin } = update;
 
         if (qr) {
             // Generate QR code as base64
@@ -224,8 +230,7 @@ export class SessionManager {
                     eventType: 'session.retry',
                     eventData: {
                         sessionName: session.sessionName,
-                        reason: lastDisconnect?.error?.message,
-                        timestamp: new Date().toISOString()
+                        reason: lastDisconnect?.error?.message
                     }
                 })
 
@@ -250,15 +255,16 @@ export class SessionManager {
                     eventType: 'session.disconnected',
                     eventData: {
                         sessionName: session.sessionName,
-                        reason: lastDisconnect?.error?.message,
-                        timestamp: new Date().toISOString()
+                        reason: lastDisconnect?.error?.message
                     }
                 })
 
                 this.deleteAndRemoveSession(session.sessionName);
             }
         } else if (connection === 'open') {
-            printConsole.success(`Session ${session.sessionName} connected successfully`);
+            printConsole.success(`Session ${session.sessionName} connected successfully, new Login ${isNewLogin}`);
+
+
             session.status = 'connected';
             session.qrCode = undefined;
 
@@ -280,10 +286,379 @@ export class SessionManager {
                 eventType: 'session.connected',
                 eventData: {
                     sessionName: session.sessionName,
-                    phoneNumber: session.phoneNumber,
+                    phoneNumber: session.phoneNumber
+                }
+            });
+        }
+    }
+
+    private handleWaMessage = async (session: ISession, message: WAMessage) => {
+        const protoImageMessage = message.message?.imageMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
+            message.message?.associatedChildMessage?.message?.imageMessage
+
+        const protoDocumentMessage = message.message?.documentMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage ||
+            message.message?.associatedChildMessage?.message?.documentMessage
+
+        const protoVideoMessage = message.message?.videoMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage ||
+            message.message?.associatedChildMessage?.message?.videoMessage
+
+        const protoAudioMessage = message.message?.audioMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.audioMessage ||
+            message.message?.associatedChildMessage?.message?.audioMessage
+
+        const protoStickerMessage = message.message?.stickerMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.stickerMessage ||
+            message.message?.associatedChildMessage?.message?.stickerMessage
+
+        const protoPtvMessage = message.message?.ptvMessage ||
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.ptvMessage ||
+            message.message?.associatedChildMessage?.message?.ptvMessage
+
+        const isMedia = protoImageMessage || protoDocumentMessage || protoVideoMessage || protoAudioMessage || protoStickerMessage || protoPtvMessage;
+        let messageText = message.message?.extendedTextMessage?.text || message.message?.conversation || ''
+
+        // Check if message.key exists
+        if (!message.key) {
+            printConsole.warning('Message key is undefined, skipping message');
+            return;
+        }
+
+        // Validate and normalize the sender JID
+        let fromJid = message.key.remoteJid;
+        if (!fromJid) {
+            printConsole.warning('Message remoteJid is undefined, skipping message');
+            return;
+        }
+        try {
+            fromJid = this.validateAndNormalizeJid(message.key.remoteJid || '');
+        } catch (error) {
+            printConsole.warning(`Invalid sender JID: ${message.key.remoteJid}, skipping message`);
+            return;
+        }
+
+
+
+        const sessionData = this.sessions.get(session.sessionName);
+        const isSaveMedia = Bun.env.SAVE_MEDIA === 'true';
+        const saveMediaTo = Bun.env.SAVE_MEDIA_TO;
+        let url: string | null = null
+        let mediaType: string | null = null
+        if (isSaveMedia && sessionData) {
+            if (protoImageMessage) {
+                // download image
+                const buffer = await this.createBuffer({
+                    mediaKey: protoImageMessage.mediaKey, directPath: protoImageMessage.directPath, url: protoImageMessage.url, mediaType: 'image',
+                    message: message,
+                    sessionData: sessionData
+                })
+                if (buffer) {
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`Image ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`Image ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`Image ${message.key.id} saved to local ${url}`);
+                    }
+                }
+                mediaType = 'image'
+                messageText = message.message?.imageMessage?.caption || ''
+
+            } else if (protoDocumentMessage) {
+                // download document
+                const buffer = await this.createBuffer({
+                    mediaKey: protoDocumentMessage.mediaKey, directPath: protoDocumentMessage.directPath, url: protoDocumentMessage.url, mediaType: 'document',
+                    message: message,
+                    sessionData: sessionData
+                })
+                if (buffer) {
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split('/')[1] ?? 'pdf'}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`Document ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`Document ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split('/')[1] ?? 'pdf'}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`Document ${message.key.id} saved to local ${url}`);
+                    }
+                }
+                mediaType = 'document'
+                messageText = message.message?.documentMessage?.caption || ''
+
+            } else if (protoVideoMessage) {
+                const buffer = await this.createBuffer({
+                    mediaKey: protoVideoMessage.mediaKey, directPath: protoVideoMessage.directPath, url: protoVideoMessage.url, mediaType: 'video',
+                    message: message,
+                    sessionData: sessionData
+                })
+                if (buffer) {
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split('/')[1] ?? 'mp4'}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`Video ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`Video ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split('/')[1] ?? 'mp4'}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`Video ${message.key.id} saved to local ${url}`);
+                    }
+                }
+                mediaType = 'video'
+                messageText = message.message?.videoMessage?.caption || ''
+
+            } else if (protoAudioMessage) {
+                const buffer = await this.createBuffer({
+                    mediaKey: protoAudioMessage.mediaKey, directPath: protoAudioMessage.directPath, url: protoAudioMessage.url, mediaType: 'audio',
+                    message: message,
+                    sessionData: sessionData
+                })
+                if (buffer) {
+                    const ext = protoAudioMessage.mimetype?.split('/')[1] ?? 'mp3'
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${ext.split(";")[0]}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`Audio ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`Audio ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${ext.split(";")[0]}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`Audio ${message.key.id} saved to local ${url}`);
+                    }
+                }
+
+                mediaType = 'audio'
+                messageText = ''
+
+            } else if (protoPtvMessage) {
+
+                const buffer = await this.createBuffer({
+                    mediaKey: protoPtvMessage.mediaKey, directPath: protoPtvMessage.directPath, url: protoPtvMessage.url, mediaType: 'ptv',
+                    message: message,
+                    sessionData: sessionData
+                })
+                if (buffer) {
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split('/')[1] ?? 'mp4'}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`PTV ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`PTV ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split('/')[1] ?? 'mp4'}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`PTV ${message.key.id} saved to local ${url}`);
+                    }
+                }
+
+                mediaType = 'ptv'
+                messageText = message.message?.ptvMessage?.caption || ''
+
+            } else if (protoStickerMessage) {
+
+                const buffer = await this.createBuffer(
+                    {
+                        mediaKey: protoStickerMessage.mediaKey,
+                        directPath: protoStickerMessage.directPath,
+                        url: protoStickerMessage.url,
+                        mediaType: 'sticker',
+                        message: message,
+                        sessionData: sessionData
+                    }
+                )
+                if (buffer) {
+                    if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
+                        const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split('/')[1] ?? 'webp'}`
+                        url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
+                        const isUploaded = await uploadFileToS3(buffer, pathToSave)
+                        if (isUploaded) {
+                            printConsole.success(`Sticker ${message.key.id} uploaded to S3 ${url}`);
+                        } else {
+                            printConsole.error(`Sticker ${message.key.id} failed to upload to S3`);
+                        }
+                    } else {
+                        const keyPath = `${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split('/')[1] ?? 'webp'}`
+                        const pathToSave = `./public/${keyPath}`
+                        const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
+                        let websiteUrl = Bun.env.WEBSITE_URL ?? ""
+                        if (!websiteUrl?.endsWith('/')) {
+                            websiteUrl += '/'
+                        }
+                        url = `${websiteUrl}media/${keyPath}`
+                        printConsole.success(`Sticker ${message.key.id} saved to local ${url}`);
+                    }
+                }
+
+                mediaType = 'sticker'
+                messageText = ''
+            }
+        }
+        // TODO: more message type to save, like location, contact, etc
+
+        // related sync, appstate and initial security notification
+        const isSyncHistory = message.message?.protocolMessage?.historySyncNotification
+            || message.message?.protocolMessage?.appStateSyncKeyShare
+            || message.message?.protocolMessage?.appStateSyncKeyRequest
+            || message.message?.protocolMessage?.initialSecurityNotificationSettingSync
+
+        if (!isSyncHistory) {
+            // Send webhook for incoming messages, except sync history
+            await this.webhookService.sendEvent({
+                sessionId: session.id,
+                webhookUrl: session.webhookUrl,
+                eventType: 'message.received',
+                eventData: {
+                    sessionName: session.sessionName,
+                    messageId: message.key.id,
+                    from: fromJid,
+                    message: message,
                     timestamp: new Date().toISOString()
                 }
             });
+        }
+
+
+        // TODO:: need to save for other jid identifier ?
+        // for now, only save from personal chat, ignore group and etc
+        if (fromJid.includes('s.whatsapp.net') && !isSyncHistory) {
+            try {
+                // Check if session still exists in database before inserting message
+                const sessionExists = await this.sessionModel.findById(session.id);
+                if (!sessionExists) {
+                    printConsole.warning(`Session ${session.sessionName} not found in database, skipping message save`);
+                    return;
+                }
+                const sql = `INSERT INTO messages 
+                        (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type, message_text, message_timestamp) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                        message_text = ?,
+                        message_timestamp = ?,
+                        data = ?`;
+
+                // @ts-ignore historychat message saved have .low property
+                const timeStamp = Number(message.messageTimestamp?.low ?? message.messageTimestamp ?? (Date.now() / 1000));
+                const dataToSave = message ? typeof message === 'string' ? message : JSON.stringify(message) : null;
+                const params = [
+                    UuidV7(),
+                    session.id,
+                    message.key.id,
+                    message.key.fromMe,
+                    0,
+                    'message.received',
+                    dataToSave,
+                    message.status ?? null,
+                    getAckString(message.status),
+                    isMedia ? 1 : 0,
+                    url,
+                    mediaType,
+                    messageText,
+                    timeStamp,
+                    messageText,
+                    timeStamp,
+                    dataToSave
+                ]
+                await db.query(sql, params);
+            } catch (error) {
+                printConsole.error(`Failed to save message for session ${session.sessionName}: ${(error as Error).message}`);
+            }
+        }
+    }
+
+    private getMediaData = (message: WAMessage, mediaType: MediaType)
+        : { mediaKey?: Uint8Array | null, directPath?: string | null, url?: string | null } | null => {
+        let mediaKey;
+        let directPath;
+        let url;
+
+        if (mediaType === 'image') {
+            mediaKey = message.message?.imageMessage?.mediaKey
+            directPath = message.message?.imageMessage?.directPath
+            url = message.message?.imageMessage?.url
+        } else if (mediaType === 'document') {
+            mediaKey = message.message?.documentMessage?.mediaKey
+            directPath = message.message?.documentMessage?.directPath
+            url = message.message?.documentMessage?.url
+        } else if (mediaType === 'video') {
+            mediaKey = message.message?.videoMessage?.mediaKey
+            directPath = message.message?.videoMessage?.directPath
+            url = message.message?.videoMessage?.url
+        } else if (mediaType === 'audio') {
+            mediaKey = message.message?.audioMessage?.mediaKey
+            directPath = message.message?.audioMessage?.directPath
+            url = message.message?.audioMessage?.url
+        } else if (mediaType === 'sticker') {
+            mediaKey = message.message?.stickerMessage?.mediaKey
+            directPath = message.message?.stickerMessage?.directPath
+            url = message.message?.stickerMessage?.url
+        } else if (mediaType === 'ptv') {
+            mediaKey = message.message?.ptvMessage?.mediaKey
+            directPath = message.message?.ptvMessage?.directPath
+            url = message.message?.ptvMessage?.url
+        }
+        if (!mediaKey || !directPath || !url) {
+            return null
+        }
+
+        return {
+            mediaKey,
+            directPath,
+            url
         }
     }
 
@@ -295,254 +670,10 @@ export class SessionManager {
         try {
             const messages = m.messages;
 
-            for (const message of messages) {// check if image or not
-                const protoImageMessage = message.message?.imageMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
-                    message.message?.associatedChildMessage?.message?.imageMessage
+            for (const message of messages) {
+                // check if image or not
 
-                const protoDocumentMessage = message.message?.documentMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage ||
-                    message.message?.associatedChildMessage?.message?.documentMessage
-
-                const protoVideoMessage = message.message?.videoMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage ||
-                    message.message?.associatedChildMessage?.message?.videoMessage
-
-                const protoAudioMessage = message.message?.audioMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.audioMessage ||
-                    message.message?.associatedChildMessage?.message?.audioMessage
-
-                const protoStickerMessage = message.message?.stickerMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.stickerMessage ||
-                    message.message?.associatedChildMessage?.message?.stickerMessage
-
-                const protoPtvMessage = message.message?.ptvMessage ||
-                    message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.ptvMessage ||
-                    message.message?.associatedChildMessage?.message?.ptvMessage
-
-                const isMedia = protoImageMessage || protoDocumentMessage || protoVideoMessage || protoAudioMessage || protoStickerMessage || protoPtvMessage;
-                // Validate and normalize the sender JID
-                let fromJid = message.key.remoteJid;
-                try {
-                    fromJid = this.validateAndNormalizeJid(message.key.remoteJid || '');
-                } catch (error) {
-                    printConsole.warning(`Invalid sender JID: ${message.key.remoteJid}, skipping message`);
-                    continue;
-                }
-
-
-
-                const sessionData = this.sessions.get(session.sessionName);
-                const isSaveMedia = Bun.env.SAVE_MEDIA === 'true';
-                const saveMediaTo = Bun.env.SAVE_MEDIA_TO;
-                let url: string | null = null
-                let mediaType: string | null = null
-                if (isSaveMedia && sessionData) {
-                    if (protoImageMessage) {
-                        // download image
-                        const buffer = await this.createBuffer({ mediaKey: protoImageMessage.mediaKey, directPath: protoImageMessage.directPath, url: protoImageMessage.url, mediaType: 'image' })
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`Image ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`Image ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split('/')[1] ?? 'png'}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`Image ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'image'
-
-                    } else if (protoDocumentMessage) {
-                        // download document
-                        const buffer = await this.createBuffer({ mediaKey: protoDocumentMessage.mediaKey, directPath: protoDocumentMessage.directPath, url: protoDocumentMessage.url, mediaType: 'document' })
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split('/')[1] ?? 'pdf'}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`Document ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`Document ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split('/')[1] ?? 'pdf'}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`Document ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'document'
-
-                    } else if (protoVideoMessage) {
-                        const buffer = await this.createBuffer({ mediaKey: protoVideoMessage.mediaKey, directPath: protoVideoMessage.directPath, url: protoVideoMessage.url, mediaType: 'video' })
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split('/')[1] ?? 'mp4'}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`Video ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`Video ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split('/')[1] ?? 'mp4'}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`Video ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'video'
-
-                    } else if (protoAudioMessage) {
-                        const buffer = await this.createBuffer({ mediaKey: protoAudioMessage.mediaKey, directPath: protoAudioMessage.directPath, url: protoAudioMessage.url, mediaType: 'audio' })
-
-                        const ext = protoAudioMessage.mimetype?.split('/')[1] ?? 'mp3'
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${ext.split(";")[0]}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`Audio ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`Audio ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${ext.split(";")[0]}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`Audio ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'audio'
-
-                    } else if (protoPtvMessage) {
-
-                        const buffer = await this.createBuffer({ mediaKey: protoPtvMessage.mediaKey, directPath: protoPtvMessage.directPath, url: protoPtvMessage.url, mediaType: 'ptv' })
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split('/')[1] ?? 'mp4'}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`PTV ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`PTV ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split('/')[1] ?? 'mp4'}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`PTV ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'ptv'
-
-                    } else if (protoStickerMessage) {
-
-                        const buffer = await this.createBuffer({ mediaKey: protoStickerMessage.mediaKey, directPath: protoStickerMessage.directPath, url: protoStickerMessage.url, mediaType: 'sticker' })
-
-                        if (saveMediaTo && saveMediaTo?.toLowerCase() === 's3') {
-                            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split('/')[1] ?? 'webp'}`
-                            url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`
-                            const isUploaded = await uploadFileToS3(buffer, pathToSave)
-                            if (isUploaded) {
-                                printConsole.success(`Sticker ${message.key.id} uploaded to S3 ${url}`);
-                            } else {
-                                printConsole.error(`Sticker ${message.key.id} failed to upload to S3`);
-                            }
-                        } else {
-                            const keyPath = `${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split('/')[1] ?? 'webp'}`
-                            const pathToSave = `./public/${keyPath}`
-                            const saveToLocal = await Bun.write(pathToSave, new Blob([new Uint8Array(buffer)]))
-                            let websiteUrl = Bun.env.WEBSITE_URL ?? ""
-                            if (!websiteUrl?.endsWith('/')) {
-                                websiteUrl += '/'
-                            }
-                            url = `${websiteUrl}media/${keyPath}`
-                            printConsole.success(`Sticker ${message.key.id} saved to local ${url}`);
-                        }
-                        mediaType = 'sticker'
-                    }
-                }
-                // TODO: more message type to save, like location, contact, etc
-
-
-                // Send webhook for incoming messages
-                await this.webhookService.sendEvent({
-                    sessionId: session.id,
-                    webhookUrl: session.webhookUrl,
-                    eventType: 'message.received',
-                    eventData: {
-                        sessionName: session.sessionName,
-                        messageId: message.key.id,
-                        from: fromJid,
-                        message: message,
-                        timestamp: new Date().toISOString()
-                    }
-                });
-
-                // TODO:: need to save for other jid identifier ?
-                // for now, only save from personal chat, ignore group and etc
-                if (fromJid.includes('s.whatsapp.net')) {
-                    try {
-                        // Check if session still exists in database before inserting message
-                        const sessionExists = await this.sessionModel.findById(session.id);
-                        if (!sessionExists) {
-                            printConsole.warning(`Session ${session.sessionName} not found in database, skipping message save`);
-                            return;
-                        }
-
-                        await db.beginTransaction();
-                        const sql = 'INSERT INTO messages (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-                        const params = [
-                            UuidV7(),
-                            session.id,
-                            message.key.id,
-                            message.key.fromMe,
-                            0,
-                            'message.received',
-                            message ? typeof message === 'string' ? message : JSON.stringify(message) : null,
-                            message.status ?? null,
-                            getAckString(message.status),
-                            isMedia ? 1 : 0,
-                            url,
-                            mediaType
-                        ]
-                        await db.query(sql, params);
-                        await db.commitTransaction();
-                    } catch (error) {
-                        await db.rollbackTransaction();
-                        printConsole.error(`Failed to save message for session ${session.sessionName}: ${(error as Error).message}`);
-                    }
-                }
-
+                await this.handleWaMessage(session, message);
 
             }
         } catch (error) {
@@ -551,25 +682,48 @@ export class SessionManager {
     }
 
     private createBuffer = async (
-        { mediaKey, directPath, url, mediaType }:
-            { mediaKey?: Uint8Array | null, directPath?: string | null, url?: string | null, mediaType: MediaType }): Promise<Buffer> => {
-        const stream = await downloadContentFromMessage({
-            mediaKey: mediaKey,
-            directPath: directPath,
-            url: url
-        }, mediaType)
+        { mediaKey, directPath, url, mediaType, message, sessionData, isRetry }:
+            { mediaKey?: Uint8Array | null, directPath?: string | null, url?: string | null, mediaType: MediaType, message: WAMessage, sessionData: SessionManagerData, isRetry?: boolean }): Promise<Buffer | null> => {
+        try {
+            const stream = await downloadContentFromMessage({
+                mediaKey: mediaKey,
+                directPath: directPath,
+                url: url
+            }, mediaType)
+            const chunks: Uint8Array[] = []
+            for await (const chunk of stream) chunks.push(chunk)
+            let total = 0
+            for (const c of chunks) total += c.length
+            const buffer = Buffer.alloc(total)
+            let offset = 0
+            for (const c of chunks) {
+                buffer.set(c, offset)
+                offset += c.length
+            }
+            return buffer
+        } catch (error) {
+            if (isRetry) {
+                printConsole.error(`Failed to create buffer: ${(error as Error).message}`);
+                return null
+            } else {
+                try {
+                    const newMessage = await sessionData.socket.updateMediaMessage(message)
+                    const result = this.getMediaData(newMessage, mediaType)
+                    if (!result) {
+                        printConsole.error(`Failed to get media data: ${(error as Error).message}`);
+                        return null
+                    }
+                    const { mediaKey, directPath, url } = result
+                    return await this.createBuffer({ mediaKey, directPath, url, mediaType, message, sessionData, isRetry: true })
+                } catch (error) {
+                    printConsole.error(`Failed to update media message: ${(error as Error).message}`);
+                    return null
+                }
 
-        const chunks: Uint8Array[] = []
-        for await (const chunk of stream) chunks.push(chunk)
-        let total = 0
-        for (const c of chunks) total += c.length
-        const buffer = Buffer.alloc(total)
-        let offset = 0
-        for (const c of chunks) {
-            buffer.set(c, offset)
-            offset += c.length
+            }
         }
-        return buffer
+
+
     }
 
     private handleMessageUpdates = async (session: ISession, updates: WAMessageUpdate[]): Promise<void> => {
@@ -603,6 +757,31 @@ export class SessionManager {
         } catch (error) {
             printConsole.error(`Error handling message updates for session ${session.sessionName}: ${(error as Error).message}`);
         }
+    }
+
+    private handleMessagingHistorySet = async (session: ISession, m: {
+        chats: Chat[];
+        contacts: Contact[];
+        messages: WAMessage[];
+        isLatest?: boolean;
+        progress?: number | null;
+        syncType?: proto.HistorySync.HistorySyncType;
+        peerDataRequestSessionId?: string | null;
+    }): Promise<void> => {
+        const { chats, contacts, messages, isLatest, progress, syncType, peerDataRequestSessionId } = m
+        for (const message of messages) {
+            await this.handleWaMessage(session, message);
+
+        }
+        await this.webhookService.sendEvent({
+            sessionId: session.id,
+            webhookUrl: session.webhookUrl,
+            eventType: 'message.history.set',
+            eventData: {
+                sessionName: session.sessionName,
+                m: m
+            }
+        });
     }
 
     getSession = (sessionName: string): SessionManagerData | undefined => {
@@ -699,6 +878,10 @@ export class SessionManager {
         if (session) {
             await session.delete();
             printConsole.info(`Session ${sessionName} deleted from database`);
+        }
+        if (this.sessions.has(sessionName)) {
+            this.sessions.delete(sessionName);
+            printConsole.info(`Session ${sessionName} removed from memory`);
         }
         // check folder exists
         // if (existsSync(`./sessions/${sessionName}`)) {
