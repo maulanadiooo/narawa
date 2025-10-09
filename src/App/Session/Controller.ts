@@ -12,25 +12,41 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
     }, {
         params: SessionParamsDto,
         query: GetQrDataQuery,
-        headers: ApiKeyHeader
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Session'],
+            description: "Get QR String, query is_image is optional"
+        }
     })
     .get("/status", async ({ params, set }) => {
         return sessionService.GetStatus({ params, set })
     }, {
         params: SessionParamsDto,
-        headers: ApiKeyHeader
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Session'],
+            description: "Check Session Status"
+        }
     })
     .delete("/", async ({ set, params }) => {
         return sessionService.DeleteSession({ params, set })
     }, {
         params: SessionParamsDto,
-        headers: ApiKeyHeader
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Session'],
+            description: "Delete Session"
+        }
     })
     .patch("/", async ({ set, params }) => {
         return sessionService.RestartSession({ params, set })
     }, {
         params: SessionParamsDto,
-        headers: ApiKeyHeader
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Session'],
+            description: "Restart Session"
+        }
     })
     .use(ChatController)
 
@@ -39,7 +55,10 @@ export const SessionController = new Elysia({ prefix: "/sessions" })
         return sessionService.CreateSession({ set, body })
     }, {
         body: SessionCreateDto,
-        headers: ApiKeyHeader,
+        headers: ApiKeyHeader,detail: {
+            tags: ['Session'],
+            description: "Create session, webhookUrl is optional"
+        }
     })
     // all start with /:sessionName
     .use(HandleSessionRequest)

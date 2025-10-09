@@ -109,7 +109,7 @@ const appServer = new Elysia()
   .use(openapi({
     path: "/documentation",
     exclude: {
-      paths: [RegExp("^\\/media")]
+      paths: ["/media/*"]
     },
     documentation: {
       info: {
@@ -131,9 +131,13 @@ const appServer = new Elysia()
           }
         }
       },
+      tags: [
+          { name: "Session", description: "Related with session" },
+          { name: "Chat", description: "Related to chat" },
+      ],
       servers: [
           {
-              url: Bun.env.BE_URL ?? 'url not publish yet',
+              url: Bun.env.WEBSITE_URL ?? 'url not publish yet',
               description: 'Our base url API'
           },
       ],
