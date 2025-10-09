@@ -105,6 +105,18 @@ export const initDatabase = async (pool: Pool) => {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );`
 
+    const sqlTableContacts = `CREATE TABLE IF NOT EXISTS contacts (
+        id VARCHAR(36) PRIMARY KEY,
+        session_id VARCHAR(36) NOT NULL,
+        name VARCHAR(256) NOT NULL,
+        phone_number VARCHAR(40) NOT NULL,
+        verified_name VARCHAR(256) NOT NULL,
+        value JSON NOT NULL,
+        identifier VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )`
+
 
 
     const indexing = [
@@ -145,16 +157,16 @@ export const initDatabase = async (pool: Pool) => {
             sql: `CREATE INDEX idx_webhook_events_status ON webhook_events(status);`
         },
         {
-            name: 'idx_webhook_messages_from_me',
+            name: 'idx_messages_from_me',
             table: 'messages',
             column: 'from_me',
-            sql: `CREATE INDEX idx_webhook_messages_from_me ON messages(from_me);`
+            sql: `CREATE INDEX idx_messages_from_me ON messages(from_me);`
         },
         {
-            name: 'idx_webhook_messages_message_id',
+            name: 'idx_messages_message_id',
             table: 'messages',
             column: 'message_id',
-            sql: `CREATE INDEX idx_webhook_messages_message_id ON messages(message_id);`
+            sql: `CREATE INDEX idx_messages_message_id ON messages(message_id);`
         },
         {
             name: 'idx_webhook_messages_is_read',
@@ -163,28 +175,28 @@ export const initDatabase = async (pool: Pool) => {
             sql: `CREATE INDEX idx_webhook_messages_is_read ON messages(is_read);`
         },
         {
-            name: 'idx_webhook_messages_session_id',
+            name: 'idx_messages_session_id',
             table: 'messages',
             column: 'session_id',
-            sql: `CREATE INDEX idx_webhook_messages_session_id ON messages(session_id);`
+            sql: `CREATE INDEX idx_messages_session_id ON messages(session_id);`
         },
         {
-            name: 'idx_webhook_messages_created_at',
+            name: 'idx_messages_created_at',
             table: 'messages',
             column: 'created_at',
-            sql: `CREATE INDEX idx_webhook_messages_created_at ON messages(created_at);`
+            sql: `CREATE INDEX idx_messages_created_at ON messages(created_at);`
         },
         {
-            name: 'idx_webhook_messages_ack_string',
+            name: 'idx_messages_ack_string',
             table: 'messages',
             column: 'ack_string',
-            sql: `CREATE INDEX idx_webhook_messages_ack_string ON messages(ack_string);`
+            sql: `CREATE INDEX idx_messages_ack_string ON messages(ack_string);`
         },
         {
-            name: 'idx_webhook_session_details_name',
+            name: 'idx_session_details_name',
             table: 'session_details',
             column: 'name',
-            sql: `CREATE INDEX idx_webhook_session_details_name ON session_details(name);`
+            sql: `CREATE INDEX idx_session_details_name ON session_details(name);`
         },
         {
             name: 'unique_session_name',
@@ -193,10 +205,29 @@ export const initDatabase = async (pool: Pool) => {
             sql: `ALTER TABLE session_details ADD UNIQUE KEY unique_session_name (session_id, name);`
         },
         {
-            name: 'idx_webhook_messages_message_timestamp',
+            name: 'idx_messages_message_timestamp',
             table: 'messages',
             column: 'message_timestamp',
-            sql: `CREATE INDEX idx_webhook_messages_message_timestamp ON messages(message_timestamp);`
+            sql: `CREATE INDEX idx_messages_message_timestamp ON messages(message_timestamp);`
+        },
+        {
+            name: 'idx_contacts_phone_number',
+            table: 'contacts',
+            column: 'phone_number',
+            sql: `CREATE INDEX idx_contacts_phone_number ON contacts(phone_number);`
+        },
+        {
+            name: 'unique_contacts_phone_number',
+            table: 'contacts',
+            column: 'phone_number',
+            sql: `ALTER TABLE contacts ADD UNIQUE KEY unique_contacts_phone_number (session_id, phone_number);`
+        },
+        
+        {
+            name: 'idx_contacts_identifier',
+            table: 'contacts',
+            column: 'identifier',
+            sql: `CREATE INDEX idx_contacts_identifier ON contacts(identifier);`
         },
     ]
 
@@ -220,6 +251,9 @@ export const initDatabase = async (pool: Pool) => {
 
         await pool.execute(sqlTableMessages);
         printConsole.success('Messages table ready');
+
+        await pool.execute(sqlTableContacts);
+        printConsole.success('Contacts table ready');
 
         // Create indexes if they don't exist
         printConsole.info('Checking and creating indexes...');

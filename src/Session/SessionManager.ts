@@ -574,7 +574,7 @@ export class SessionManager {
 
 
         // TODO:: need to save for other jid identifier ?
-        // for now, only save from personal chat, ignore group and etc
+        // for now, only save from personal chat, ignore group and etc, also sync related message
         if (fromJid.includes('s.whatsapp.net') && !isSyncHistory) {
             try {
                 // Check if session still exists in database before inserting message
@@ -769,21 +769,76 @@ export class SessionManager {
         peerDataRequestSessionId?: string | null;
     }): Promise<void> => {
         const { chats, contacts, messages, isLatest, progress, syncType, peerDataRequestSessionId } = m
-        if (Bun.env.SAVE_HISTORY_MESSAGE == "true") {
-            for (const message of messages) {
-                await this.handleWaMessage(session, message);
 
-            }
-            await this.webhookService.sendEvent({
-                sessionId: session.id,
-                webhookUrl: session.webhookUrl,
-                eventType: 'message.history.set',
-                eventData: {
-                    sessionName: session.sessionName,
-                    m: m
+
+        // Create promises array for parallel execution
+        const promises: Promise<any>[] = [];
+
+        // Add message processing promise
+        if (Bun.env.SAVE_HISTORY_MESSAGE == "true") {
+            const messagePromise = (async () => {
+                for (const message of messages) {
+                    if (message && message.key) {
+                        await this.handleWaMessage(session, message);
+                    }
                 }
-            });
+            })();
+            promises.push(messagePromise);
         }
+
+        // Add contact saving promise
+        if (Bun.env.SAVE_CONTACT == "true") {
+            const contactPromise = (async () => {
+                for (const contact of contacts) {
+                    if ((contact.phoneNumber || contact.id).includes("@broadcast")) {
+                        continue;
+                    }
+                    const sql = `INSERT INTO contacts 
+                    (id, session_id, name, phone_number, verified_name, value, identifier) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                    name = ?,
+                    verified_name = ?,
+                    identifier = ?,
+                    value = ?`;
+
+                    const name = contact.verifiedName || contact.name || contact.notify || ""
+                    const phoneNumber = contact.phoneNumber || contact.id
+                    const verifiedName = contact.verifiedName ?? ""
+                    const identifier = contact.id.includes("@s.whatsapp.net") || contact.id.includes("@lid") ? 'personal' : contact.id.includes("@g.us") ? 'group' : 'other'
+                    const value = JSON.stringify(contact)
+                    await db.query(sql, [
+                        UuidV7(),
+                        session.id,
+                        name,
+                        phoneNumber,
+                        verifiedName,
+                        value,
+                        identifier,
+                        name,
+                        verifiedName,
+                        identifier,
+                        value
+                    ]);
+                }
+            })();
+            promises.push(contactPromise);
+        }
+
+        // Execute all promises in parallel
+        await Promise.all(promises);
+
+        // Send webhook after all processing is complete
+        await this.webhookService.sendEvent({
+            sessionId: session.id,
+            webhookUrl: session.webhookUrl,
+            eventType: 'message.history.set',
+            eventData: {
+                sessionName: session.sessionName,
+                m: m
+            }
+        });
+
     }
 
     getSession = (sessionName: string): SessionManagerData | undefined => {
