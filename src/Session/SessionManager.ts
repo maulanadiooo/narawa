@@ -769,19 +769,21 @@ export class SessionManager {
         peerDataRequestSessionId?: string | null;
     }): Promise<void> => {
         const { chats, contacts, messages, isLatest, progress, syncType, peerDataRequestSessionId } = m
-        for (const message of messages) {
-            await this.handleWaMessage(session, message);
+        if (Bun.env.SAVE_HISTORY_MESSAGE == "true") {
+            for (const message of messages) {
+                await this.handleWaMessage(session, message);
 
-        }
-        await this.webhookService.sendEvent({
-            sessionId: session.id,
-            webhookUrl: session.webhookUrl,
-            eventType: 'message.history.set',
-            eventData: {
-                sessionName: session.sessionName,
-                m: m
             }
-        });
+            await this.webhookService.sendEvent({
+                sessionId: session.id,
+                webhookUrl: session.webhookUrl,
+                eventType: 'message.history.set',
+                eventData: {
+                    sessionName: session.sessionName,
+                    m: m
+                }
+            });
+        }
     }
 
     getSession = (sessionName: string): SessionManagerData | undefined => {
