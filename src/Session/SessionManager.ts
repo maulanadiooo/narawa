@@ -305,7 +305,7 @@ export class SessionManager {
         } else if (!connection) {
             if (session.isPairingCode && session.phoneNumber && session.pairingStatus === 'pending') {
                 const sessionData = this.sessions.get(session.sessionName);
-                
+
                 if (sessionData && !sessionData.socket.authState.creds.registered) {
                     const code = await sessionData.socket.requestPairingCode(session.phoneNumber);
                     session.pairingCode = code;
@@ -342,8 +342,12 @@ export class SessionManager {
             message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.ptvMessage ||
             message.message?.associatedChildMessage?.message?.ptvMessage
 
-        const isMedia = protoImageMessage || protoDocumentMessage || protoVideoMessage || protoAudioMessage || protoStickerMessage || protoPtvMessage;
-        let messageText = message.message?.extendedTextMessage?.text || message.message?.conversation || ''
+        const isMedia = protoImageMessage || protoDocumentMessage || protoVideoMessage
+            || protoAudioMessage || protoStickerMessage || protoPtvMessage;
+        let messageText = message.message?.extendedTextMessage?.text || message.message?.conversation
+            || message.message?.protocolMessage?.editedMessage?.conversation ||
+            message.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
+            ''
 
         // Check if message.key exists
         if (!message.key) {
