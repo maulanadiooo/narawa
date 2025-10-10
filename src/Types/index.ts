@@ -5,6 +5,9 @@ export interface ISession {
   id: string;
   sessionName: string;
   phoneNumber?: string;
+  isPairingCode?: boolean;
+  pairingStatus?: 'pending' | 'paired';
+  pairingCode?: string;
   status: SessionStatus;
   qrCode?: string;
   authState?: string;
@@ -135,6 +138,9 @@ export interface SessionData {
   updated_at: Date;
   last_seen?: Date;
   webhook_url?: string;
+  is_pairing_code?: boolean;
+  pairing_status?: 'pending' | 'paired';
+  pairing_code?: string;
 }
 
 // export interface MessageData {

@@ -41,8 +41,11 @@ export const initDatabase = async (pool: Pool) => {
         id VARCHAR(36) PRIMARY KEY,
         session_name VARCHAR(100) NOT NULL UNIQUE,
         phone_number VARCHAR(20),
-        status ENUM('connecting', 'connected', 'disconnected', 'qr_required') DEFAULT 'qr_required',
+        status ENUM('connecting', 'connected', 'disconnected', 'qr_required', 'pairing_code') DEFAULT 'qr_required',
         qr_code TEXT,
+        pairing_code VARCHAR(8) NULL,
+        is_pairing_code BOOLEAN DEFAULT FALSE,
+        pairing_status ENUM('pending', 'paired') NULL,
         auth_state LONGTEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -228,6 +231,25 @@ export const initDatabase = async (pool: Pool) => {
             table: 'contacts',
             column: 'identifier',
             sql: `CREATE INDEX idx_contacts_identifier ON contacts(identifier);`
+        },
+        
+        {
+            name: 'idx_sessions_pairing_code',
+            table: 'sessions',
+            column: 'pairing_code',
+            sql: `CREATE INDEX idx_sessions_pairing_code ON sessions(pairing_code);`
+        },
+        {
+            name: 'idx_sessions_pairing_status',
+            table: 'sessions',
+            column: 'pairing_status',
+            sql: `CREATE INDEX idx_sessions_pairing_status ON sessions(pairing_status);`
+        },
+        {
+            name: 'idx_sessions_is_pairing_code',
+            table: 'sessions',
+            column: 'is_pairing_code',
+            sql: `CREATE INDEX idx_sessions_is_pairing_code ON sessions(is_pairing_code);`
         },
     ]
 

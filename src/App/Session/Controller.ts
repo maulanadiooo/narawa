@@ -18,6 +18,16 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
             description: "Get QR String, query is_image is optional"
         }
     })
+    .get("/code", async ({ params, set }) => {
+        return sessionService.GetPairingCode({ params, set })
+    }, {
+        params: SessionParamsDto,
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Session'],
+            description: "Get Pairing Code"
+        }
+    })
     .get("/status", async ({ params, set }) => {
         return sessionService.GetStatus({ params, set })
     }, {
@@ -55,9 +65,14 @@ export const SessionController = new Elysia({ prefix: "/sessions" })
         return sessionService.CreateSession({ set, body })
     }, {
         body: SessionCreateDto,
-        headers: ApiKeyHeader,detail: {
+        headers: ApiKeyHeader, detail: {
             tags: ['Session'],
-            description: "Create session, webhookUrl is optional"
+            description: `# Create session \n
+webhookUrl is optional \n
+## If you want using pairing code, phoneNumber is required \n
+Recommended is still using QR code, sometime pairing code not work, I have no idea why
+
+`
         }
     })
     // all start with /:sessionName

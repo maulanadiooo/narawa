@@ -5,7 +5,8 @@ export const SessionCreateDto = t.Object({
     sessionName: t.String({
         error: "Session name is required"
     }),
-    webhookUrl: t.Optional(t.String({}))
+    webhookUrl: t.Optional(t.String({})),
+    phoneNumber: t.Optional(t.String({}))
 })
 
 export interface ISessionCreate extends IGlobalInterfaceService {
@@ -37,5 +38,6 @@ export interface IGetStatus extends BaseSessionParams { }
 
 export interface IDeleteSession extends BaseSessionParams { }
 export interface IRestartSession extends BaseSessionParams { }
+export interface IGetPairingCode extends BaseSessionParams { }
 
 

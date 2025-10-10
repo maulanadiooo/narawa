@@ -3,7 +3,7 @@ import { ResponseApiSuccess } from "../../Helper/ResponseApi";
 import { ErrorResponse } from "../../Helper/ResponseError";
 import { CleanUUID } from "../../Helper/uuid";
 import { ISession, MessageData } from "../../Types";
-import { IDeleteSession, IGetQrData, IGetStatus, IRestartSession, ISessionCreate } from "./Session.types";
+import { IDeleteSession, IGetPairingCode, IGetQrData, IGetStatus, IRestartSession, ISessionCreate } from "./Session.types";
 import qrcode from 'qrcode';
 export class SessionService {
 
@@ -11,7 +11,7 @@ export class SessionService {
 
     }
 
-    protected checkSession = async (sessionName: string):Promise<ISession> => {
+    protected checkSession = async (sessionName: string): Promise<ISession> => {
         const session = await sessionManager.sessionModel.findBySessionName(sessionName);
         if (!session) {
             throw new ErrorResponse(404, "SESSION_NOT_FOUND", "Session not found");
@@ -21,8 +21,8 @@ export class SessionService {
 
     CreateSession = async (props: ISessionCreate) => {
         const { set, body } = props;
-        const { sessionName, webhookUrl } = body;
-        const session = await sessionManager.createSession(sessionName, webhookUrl);
+        const { sessionName, webhookUrl, phoneNumber } = body;
+        const session = await sessionManager.createSession(sessionName, webhookUrl, phoneNumber);
 
         return ResponseApiSuccess({
             set, data: {
@@ -97,6 +97,24 @@ export class SessionService {
         await sessionManager.restartSession(sessionName);
         return ResponseApiSuccess({
             set,
+        })
+    }
+
+    GetPairingCode = async (props: IGetPairingCode) => {
+        const { params, set } = props;
+        const { sessionName } = params;
+        const session = await this.checkSession(sessionName);
+        if (!session.isPairingCode) {
+            throw new ErrorResponse(400, "SESSION_NOT_PAIRING_CODE", "Session not using pairing code");
+        }
+        if (session.pairingStatus === 'paired') {
+            throw new ErrorResponse(400, "SESSION_PAIRED", "Session already paired");
+        }
+        if (!session.pairingCode) {
+            throw new ErrorResponse(400, "SESSION_NO_PAIRING_CODE", "Pairing code is not available yet");
+        }
+        return ResponseApiSuccess({
+            set, data: { code: session.pairingCode }
         })
     }
 }

@@ -15,6 +15,9 @@ export class Session implements ISession {
     public updatedAt?: Date;
     public lastSeen?: Date;
     public webhookUrl?: string;
+    public isPairingCode?: boolean;
+    public pairingStatus?: 'pending' | 'paired';
+    public pairingCode?: string;
 
     constructor(data: Partial<ISession> & Partial<SessionData> = {}) {
         this.id = data.id || UuidV7();
@@ -28,18 +31,25 @@ export class Session implements ISession {
         this.updatedAt = data.updated_at || data.updatedAt;
         this.lastSeen = data.last_seen || data.lastSeen;
         this.webhookUrl = data.webhook_url || data.webhookUrl;
+        this.isPairingCode = data.is_pairing_code || data.isPairingCode;
+        this.pairingStatus = data.pairing_status || data.pairingStatus;
+        this.pairingCode = data.pairing_code || data.pairingCode;
     }
 
     async save(): Promise<void> {
         const sql = `
-            INSERT INTO sessions (id, session_name, phone_number, status, qr_code, auth_state, is_active, webhook_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sessions (id, session_name, phone_number, status, qr_code, auth_state, is_active, webhook_url, is_pairing_code, pairing_status, pairing_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             phone_number = VALUES(phone_number),
             status = VALUES(status),
             qr_code = VALUES(qr_code),
             auth_state = VALUES(auth_state),
             is_active = VALUES(is_active),
+            webhook_url = VALUES(webhook_url),
+            is_pairing_code = VALUES(is_pairing_code),
+            pairing_status = VALUES(pairing_status),
+            pairing_code = VALUES(pairing_code),
             updated_at = CURRENT_TIMESTAMP
         `;
 
@@ -51,7 +61,10 @@ export class Session implements ISession {
             this.qrCode || null,
             this.authState || null,
             this.isActive,
-            this.webhookUrl ?? ""
+            this.webhookUrl ?? "",
+            this.isPairingCode ?? false,
+            this.pairingStatus ?? null,
+            this.pairingCode ?? null
         ]);
     }
 

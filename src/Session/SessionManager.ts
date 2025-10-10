@@ -11,6 +11,8 @@ import {
     MiscMessageGenerationOptions,
     Chat,
     Contact,
+    WASocket,
+    UserFacingSocketConfig,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
@@ -104,7 +106,7 @@ export class SessionManager {
         }
     }
 
-    createSession = async (sessionName: string, webhookUrl?: string): Promise<ISession> => {
+    createSession = async (sessionName: string, webhookUrl?: string, phoneNumber?: string): Promise<ISession> => {
         // Check if session already exists in memory
         if (this.sessions.has(sessionName)) {
             throw new ErrorResponse(400, "SESSION_IS_ACTIVE", `Session '${sessionName}' already exists and active in memory`);
@@ -125,7 +127,10 @@ export class SessionManager {
             session = new Session({
                 sessionName: sessionName,
                 status: 'qr_required',
-                webhookUrl: webhookUrl
+                webhookUrl: webhookUrl,
+                phoneNumber: phoneNumber,
+                isPairingCode: phoneNumber ? true : false,
+                pairingStatus: phoneNumber ? 'pending' : undefined,
             });
             await session.save();
         }
@@ -140,15 +145,13 @@ export class SessionManager {
     private initializeSession = async (session: ISession): Promise<void> => {
         try {
             const { state, saveCreds, removeCreds } = await useMySQLAuthState(session.id);
-
-            const socket = makeWASocket({
+            const waSocketOptions: UserFacingSocketConfig = {
                 auth: {
                     creds: state.creds,
                     keys: makeCacheableSignalKeyStore(state.keys, this.logger)
                 },
                 printQRInTerminal: false,
                 logger: this.logger,
-                browser: Browsers.macOS('Desktop'),
                 generateHighQualityLinkPreview: true,
                 connectTimeoutMs: 60_000,
                 keepAliveIntervalMs: 30_000,
@@ -156,7 +159,11 @@ export class SessionManager {
                 maxMsgRetryCount: 5,
                 markOnlineOnConnect: false,
                 syncFullHistory: true,
-            });
+            }
+            if (!session.isPairingCode) {
+                waSocketOptions.browser = Browsers.macOS('Desktop');
+            }
+            const socket = makeWASocket(waSocketOptions);
 
             // Store socket reference
             this.sessions.set(session.sessionName, {
@@ -212,9 +219,11 @@ export class SessionManager {
                 printConsole.error(`Failed to generate QR code for session ${session.sessionName}: ${(error as Error).message}`);
             }
         }
+        printConsole.info(`Connection update: ${connection}`);
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+
 
             // Check if it's a conflict error - don't reconnect immediately
             // const isConflictError = lastDisconnect?.error?.message?.includes('conflict') || 
@@ -266,6 +275,10 @@ export class SessionManager {
 
 
             session.status = 'connected';
+            if (session.isPairingCode) {
+                session.pairingStatus = 'paired';
+                session.pairingCode = undefined;
+            }
             session.qrCode = undefined;
 
             // Get phone number from socket
@@ -289,6 +302,18 @@ export class SessionManager {
                     phoneNumber: session.phoneNumber
                 }
             });
+        } else if (!connection) {
+            if (session.isPairingCode && session.phoneNumber && session.pairingStatus === 'pending') {
+                const sessionData = this.sessions.get(session.sessionName);
+                
+                if (sessionData && !sessionData.socket.authState.creds.registered) {
+                    const code = await sessionData.socket.requestPairingCode(session.phoneNumber);
+                    session.pairingCode = code;
+                    printConsole.success(`Pairing code: ${code}`);
+                }
+                await (session as Session).save();
+            }
+
         }
     }
 
@@ -925,7 +950,6 @@ export class SessionManager {
             await this.deleteAndRemoveSession(sessionName);
         } else {
             printConsole.error(`Session ${sessionName} not found in sessions`);
-            printConsole.info(`Try remove folder manually: ./sessions/${sessionName}`);
             await this.deleteAndRemoveSession(sessionName);
         }
     }
