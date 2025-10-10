@@ -41,7 +41,7 @@ export class Database {
         }
     }
 
-    async query(sql: string, params: any[] = []): Promise<any[]> {
+    async query(sql: string, params: any[] = []): Promise<any> {
         try {
             if (!this.pool) {
                 throw new ErrorResponse(500, 'DATABASE_POOL_NOT_INITIALIZED', 'Database pool not initialized');
@@ -84,8 +84,8 @@ export class Database {
         if (!this.txConn) {
             throw new ErrorResponse(500, 'NO_ACTIVE_TRANSACTION', 'No active transaction to commit');
         }
-        await this.txConn.commit();
-        this.txConn.release();
+        await this.txConn?.commit();
+        this.txConn?.release();
         this.txConn = null;
     }
 
@@ -95,9 +95,9 @@ export class Database {
             return;
         }
         try {
-            await this.txConn.rollback();
+            await this.txConn?.rollback();
         } finally {
-            this.txConn.release();
+            this.txConn?.release();
             this.txConn = null;
         }
     }

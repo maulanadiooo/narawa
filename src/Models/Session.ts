@@ -1,5 +1,5 @@
 import { ISession, SessionData, SessionStatus } from '../Types';
-import { db } from '..';
+import { db, printConsole } from '..';
 import { UuidV7 } from '../Helper/uuid';
 import { ErrorResponse } from '../Helper/ResponseError';
 
@@ -75,15 +75,24 @@ export class Session implements ISession {
     }
 
     async delete(): Promise<void> {
-        const sql = 'DELETE FROM sessions WHERE id = ?';
         const sqlSessionDetails = 'DELETE FROM session_details WHERE session_id = ?';
+        const sqlContacts = 'DELETE FROM contacts WHERE session_id = ?';
+        const sqlMessages = 'DELETE FROM messages WHERE session_id = ?';
+        const sqlWebhookEvents = 'DELETE FROM webhook_events WHERE session_id = ?';
+        const sqlSessions = 'DELETE FROM sessions WHERE id = ?';
         // transaction
         try {
+            printConsole.info(`Deleting session ${this.id}`);
             await db.beginTransaction();
             await db.query(sqlSessionDetails, [this.id]);
-            await db.query(sql, [this.id]);
+            await db.query(sqlContacts, [this.id]);
+            await db.query(sqlMessages, [this.id]);
+            await db.query(sqlWebhookEvents, [this.id]);
+            await db.query(sqlSessions, [this.id]);
             await db.commitTransaction();
         } catch (error) {
+            console.error(error);
+            console.error("ERROR ATAS");
             await db.rollbackTransaction();
             throw new ErrorResponse(500, 'DATABASE_DELETE_ERROR', 'Database delete error');
         }
