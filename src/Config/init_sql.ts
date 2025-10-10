@@ -251,6 +251,12 @@ export const initDatabase = async (pool: Pool) => {
             column: 'is_pairing_code',
             sql: `CREATE INDEX idx_sessions_is_pairing_code ON sessions(is_pairing_code);`
         },
+        {
+            name: 'unique_messages_session_id_message_id',
+            table: 'messages',
+            column: 'message_id',
+            sql: `ALTER TABLE messages ADD UNIQUE KEY unique_messages_session_id_message_id (session_id, message_id);`
+        },
     ]
 
     try {
