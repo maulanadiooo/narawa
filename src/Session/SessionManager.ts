@@ -1031,7 +1031,7 @@ export class SessionManager {
             const normalizedTo = this.validateAndNormalizeJid(to);
             printConsole.info(`Sending ${type} message to: ${normalizedTo}`);
 
-            let result: any;
+            let result: proto.IWebMessageInfo | undefined;
 
             let options: MiscMessageGenerationOptions = {};
             if (quotedMessageId) {

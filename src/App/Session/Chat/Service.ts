@@ -1,3 +1,4 @@
+import { proto } from "@whiskeysockets/baileys";
 import { sessionManager } from "../../..";
 import { ResponseApiSuccess } from "../../../Helper/ResponseApi";
 import { ErrorResponse } from "../../../Helper/ResponseError";
@@ -17,9 +18,12 @@ export class ChatService extends SessionService {
         const { sessionName } = params;
         const { to, message, quotedMessageId } = body;
         await this.checkSession(sessionName);
-        await sessionManager.sendMessage(sessionName, to, message, 'text', quotedMessageId);
+        const result: proto.IWebMessageInfo = await sessionManager.sendMessage(sessionName, to, message, 'text', quotedMessageId);
         return ResponseApiSuccess({
             set,
+            data: {
+                messageId: result.key?.id,
+            }
         })
     }
 
@@ -43,9 +47,12 @@ export class ChatService extends SessionService {
             fileName: `${CleanUUID()}.png`,
             mimetype: imageFile ? imageFile.type : "image/png"
         }
-        await sessionManager.sendMessage(sessionName, to, messageData, 'image');
+        const result: proto.IWebMessageInfo = await sessionManager.sendMessage(sessionName, to, messageData, 'image');
         return ResponseApiSuccess({
             set,
+            data: {
+                messageId: result.key?.id,
+            }
         })
     }
 
@@ -77,9 +84,12 @@ export class ChatService extends SessionService {
             mimetype: docFile ? docFile.type : "image/png"
         }
 
-        await sessionManager.sendMessage(sessionName, to, messageData, 'document');
+        const result: proto.IWebMessageInfo = await sessionManager.sendMessage(sessionName, to, messageData, 'document');
         return ResponseApiSuccess({
             set,
+            data: {
+                messageId: result.key?.id,
+            }
         })
     }
 
@@ -87,7 +97,7 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to, messageIds } = body;
-        const session =await this.checkSession(sessionName);
+        const session = await this.checkSession(sessionName);
         await sessionManager.sendRead(session, to, messageIds);
         return ResponseApiSuccess({
             set,
