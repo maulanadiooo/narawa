@@ -101,8 +101,9 @@ export class SessionService {
     }
 
     GetPairingCode = async (props: IGetPairingCode) => {
-        const { params, set } = props;
+        const { params, set, query } = props;
         const { sessionName } = params;
+        const { isNew } = query;
         const session = await this.checkSession(sessionName);
         if (!session.isPairingCode) {
             throw new ErrorResponse(400, "SESSION_NOT_PAIRING_CODE", "Session not using pairing code");
@@ -113,8 +114,19 @@ export class SessionService {
         if (!session.pairingCode) {
             throw new ErrorResponse(400, "SESSION_NO_PAIRING_CODE", "Pairing code is not available yet");
         }
+        let code = session.pairingCode;
+        if (isNew) {
+            const sessionData = await sessionManager.getSession(sessionName);
+            if (!sessionData) {
+                throw new ErrorResponse(404, "SESSION_NOT_FOUND", "Session not found");
+            }
+            if (!session.phoneNumber) {
+                throw new ErrorResponse(400, "SESSION_NO_PHONE_NUMBER", "Need phone number to request pairing code");
+            }
+            code = await sessionData.socket.requestPairingCode(session.phoneNumber);
+        }
         return ResponseApiSuccess({
-            set, data: { code: session.pairingCode }
+            set, data: { code }
         })
     }
 }

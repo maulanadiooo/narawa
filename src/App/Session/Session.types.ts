@@ -38,6 +38,14 @@ export interface IGetStatus extends BaseSessionParams { }
 
 export interface IDeleteSession extends BaseSessionParams { }
 export interface IRestartSession extends BaseSessionParams { }
-export interface IGetPairingCode extends BaseSessionParams { }
+
+
+export const PairingCodeQuery = t.Optional(t.Object({
+    isNew: t.Optional(t.Boolean({}))
+}))
+
+export interface IGetPairingCode extends BaseSessionParams {
+    query: Static<typeof PairingCodeQuery>
+ }
 
 

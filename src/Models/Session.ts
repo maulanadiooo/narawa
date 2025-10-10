@@ -104,8 +104,6 @@ export class Session implements ISession {
             await db.query(sqlSessions, [this.id]);
             await db.commitTransaction();
         } catch (error) {
-            console.error(error);
-            console.error("ERROR ATAS");
             await db.rollbackTransaction();
             throw new ErrorResponse(500, 'DATABASE_DELETE_ERROR', 'Database delete error');
         }

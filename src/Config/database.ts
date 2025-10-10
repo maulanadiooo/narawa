@@ -82,7 +82,7 @@ export class Database {
     
     async commitTransaction(): Promise<void> {
         if (!this.txConn) {
-            throw new ErrorResponse(500, 'NO_ACTIVE_TRANSACTION', 'No active transaction to commit');
+            return;
         }
         await this.txConn?.commit();
         this.txConn?.release();
