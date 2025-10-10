@@ -38,7 +38,7 @@ const appServer = new Elysia()
   .error({
     ErrorResponse
   })
-  .onError(({ code, set, error, body, path, request }) => {
+  .onError(async ({ code, set, error, body, path, request }) => {
     if (error instanceof ErrorResponse) {
       if (error.statusCode !== 401 && error.statusCode !== 402) {
         // TODO: loging ?
@@ -52,14 +52,11 @@ const appServer = new Elysia()
         code: error.code.toUpperCase(),
       })
     } else if (code === "NOT_FOUND") {
-      printConsole.error(`NOT FOUND!!! ${request.method}:::${request.url}`)
-      return ResponseApi({
-        set: set,
-        status: false,
-        statusCode: 404,
-        code: "ENDPOINT_NOT_FOUND",
-        msg: "Endpoint Not Found",
-      })
+      set.status = 404;
+      set.headers["Content-Type"] = "text/html";
+      let html = await Bun.file("./src/Html/endpoint_not_found.html").text();
+      let htmlReplace = html.replaceAll("{{WEBSITE_URL}}", Bun.env.WEBSITE_URL ?? 'url not publish yet');
+      return htmlReplace
     } else if (error instanceof ValidationError) {
       const jsonMessage = JSON.parse(error.message);
       const { summary, errors } = jsonMessage;
@@ -132,14 +129,14 @@ const appServer = new Elysia()
         }
       },
       tags: [
-          { name: "Session", description: "Related with session" },
-          { name: "Chat", description: "Related to chat" },
+        { name: "Session", description: "Related with session" },
+        { name: "Chat", description: "Related to chat" },
       ],
       servers: [
-          {
-              url: Bun.env.WEBSITE_URL ?? 'url not publish yet',
-              description: 'Our base url API'
-          },
+        {
+          url: Bun.env.WEBSITE_URL ?? 'url not publish yet',
+          description: 'Our base url API'
+        },
       ],
     },
   }))
