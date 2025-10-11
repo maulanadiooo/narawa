@@ -11,7 +11,7 @@ export const GetContactQuery = t.Object({
     }),
     identifier: t.Optional(t.Array(t.Enum({
         personal: "personal",
-        personal_id: "personal_id",
+        lid: "lid",
         group: "group",
         other: "other"
     })))

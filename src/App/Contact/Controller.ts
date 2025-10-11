@@ -12,4 +12,8 @@ export const ContactController = new Elysia({ prefix: "/contact" })
     }, {
         query: GetContactQuery,
         params: SessionParamsDto,
+        detail: {
+            tags: ['Contact'],
+            description: "Get contact with pagination"
+        }
     })

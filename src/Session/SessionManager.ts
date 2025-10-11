@@ -850,7 +850,7 @@ export class SessionManager {
                         }
                     }
                     const verifiedName = contact.verifiedName ?? ""
-                    const identifier = contact.id.includes("@s.whatsapp.net") ? 'personal' : contact.id.includes("@lid") ? 'personal_id' : contact.id.includes("@g.us") ? 'group' : 'other'
+                    const identifier = contact.id.includes("@s.whatsapp.net") ? 'personal' : contact.id.includes("@lid") ? 'lid' : contact.id.includes("@g.us") ? 'group' : 'other'
                     // const value = JSON.stringify(contact)
                     // await db.query(sql, [
                     //     UuidV7(),

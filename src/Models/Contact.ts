@@ -9,7 +9,7 @@ export class Contact implements IContact {
     public name?: string;
     public phoneNumber?: string;
     public verifiedName?: string;
-    public identifier: 'personal' | 'personal_id' | 'group' | 'other';
+    public identifier: 'personal' | 'lid' | 'group' | 'other';
 
     constructor(data: Partial<IContact> = {}) {
         this.id = data.id || UuidV7();

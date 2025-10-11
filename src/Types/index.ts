@@ -246,5 +246,5 @@ export interface IContact {
   name?: string;
   phoneNumber?: string;
   verifiedName?: string;
-  identifier: 'personal' | 'personal_id' | 'group' | 'other';
+  identifier: 'personal' | 'lid' | 'group' | 'other';
 }
