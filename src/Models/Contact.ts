@@ -55,28 +55,23 @@ export class Contact implements IContact {
 
 
         let sqlCount = `SELECT COUNT(*) as totalData FROM contacts WHERE session_id = ? `;
-        let sqlParamsCount: any = [session.id];
         if (identifier && identifier.length > 0) {
             if (identifier.length == 1) {
                 sql += ` AND identifier = ?`;
                 sqlParams.push(identifier[0]);
                 sqlCount += ` AND identifier = ?`;
-                sqlParamsCount.push(identifier[0]);
             } else {
                 sql += ` AND identifier IN (${identifier.map(() => '?').join(',')})`;
                 sqlParams.push(...identifier);
                 sqlCount += ` AND identifier IN (${identifier.map(() => '?').join(',')})`;
-                sqlParamsCount.push(...identifier);
             }
 
         }
         sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-        sqlParams.push(`${limit}`, `${offset}`);
-
-
+        
         const [rows, totalData] = await Promise.all([
-            db.query(sql, sqlParams),
-            db.query(sqlCount, sqlParamsCount)
+            db.query(sql, [...sqlParams, `${limit}`, `${offset}`]),
+            db.query(sqlCount, sqlParams)
         ])
 
         const contacts = rows

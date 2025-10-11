@@ -318,7 +318,7 @@ export class SessionManager {
         }
     }
 
-    private handleWaMessage = async (session: ISession, message: WAMessage) => {
+    private handleWaMessage = async (session: ISession, message: WAMessage, isHistorySync: boolean = false) => {
         const protoImageMessage = message.message?.imageMessage ||
             message.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage ||
             message.message?.associatedChildMessage?.message?.imageMessage
@@ -581,12 +581,14 @@ export class SessionManager {
         // TODO: more message type to save, like location, contact, etc
 
         // related sync, appstate and initial security notification
-        const isSyncHistory = message.message?.protocolMessage?.historySyncNotification
+        const systemMessage = message.message?.protocolMessage?.historySyncNotification
             || message.message?.protocolMessage?.appStateSyncKeyShare
             || message.message?.protocolMessage?.appStateSyncKeyRequest
             || message.message?.protocolMessage?.initialSecurityNotificationSettingSync
+            || message.message?.protocolMessage?.peerDataOperationRequestResponseMessage
+            || message.message?.protocolMessage?.peerDataOperationRequestResponseMessage
 
-        if (!isSyncHistory) {
+        if (!systemMessage) {
             // Send webhook for incoming messages, except sync history
             await this.webhookService.sendEvent({
                 sessionId: session.id,
@@ -605,7 +607,9 @@ export class SessionManager {
 
         // TODO:: need to save for other jid identifier ?
         // for now, only save from personal chat, ignore group and etc, also sync related message
-        if (fromJid.includes('s.whatsapp.net') && !isSyncHistory) {
+        // I have no IDEA @lid is personal or not, just save it for now
+        // TODO: need to check if @lid is personal or not
+        if ((fromJid.includes('s.whatsapp.net') || fromJid.includes('@lid')) && !systemMessage) {
             try {
                 // Check if session still exists in database before inserting message
                 const sessionExists = await this.sessionModel.findById(session.id);
@@ -629,7 +633,7 @@ export class SessionManager {
                     session.id,
                     message.key.id,
                     message.key.fromMe,
-                    0,
+                    isHistorySync && !message.key.fromMe ? 1 : 0, // if history sync and message not from me, then is_read is 1
                     'message.received',
                     dataToSave,
                     message.status ?? null,
@@ -809,7 +813,7 @@ export class SessionManager {
             const messagePromise = (async () => {
                 for (const message of messages) {
                     if (message && message.key) {
-                        await this.handleWaMessage(session, message);
+                        await this.handleWaMessage(session, message, true);
                     }
                 }
             })();

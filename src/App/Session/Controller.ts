@@ -5,6 +5,7 @@ import { ChatController } from "./Chat/Controller";
 import { ApiKeyHeader } from "../../Helper/GlobalInterfaceService";
 import { sessionMiddleware } from "../../Middleware/session.middleware";
 import { ContactController } from "../Contact/Controller";
+import { MessageController } from "../Message/Controller";
 const sessionService = new SessionService();
 
 
@@ -64,6 +65,7 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
     })
     .use(ChatController)
     .use(ContactController)
+    .use(MessageController)
 
 export const SessionController = new Elysia({ prefix: "/sessions" })
     .post("/create", async ({ set, body }) => {
