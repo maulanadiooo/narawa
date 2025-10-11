@@ -7,18 +7,6 @@ import { IDeleteSession, IGetPairingCode, IGetQrData, IGetStatus, IRestartSessio
 import qrcode from 'qrcode';
 export class SessionService {
 
-    constructor() {
-
-    }
-
-    protected checkSession = async (sessionName: string): Promise<ISession> => {
-        const session = await sessionManager.sessionModel.findBySessionName(sessionName);
-        if (!session) {
-            throw new ErrorResponse(404, "SESSION_NOT_FOUND", "Session not found");
-        }
-        return session;
-    }
-
     CreateSession = async (props: ISessionCreate) => {
         const { set, body } = props;
         const { sessionName, webhookUrl, phoneNumber } = body;
@@ -34,9 +22,8 @@ export class SessionService {
     }
 
     GetQrData = async (props: IGetQrData) => {
-        const { set, params, query } = props;
+        const { set, params, query, session } = props;
         const { sessionName } = params;
-        const session = await this.checkSession(sessionName);
 
         if (session.status !== 'qr_required' || !session.qrCode) {
             throw new ErrorResponse(400, "SESSION_NOT_READY", `QR code not available, your session status is ${session.status}`);
@@ -68,7 +55,6 @@ export class SessionService {
         const { set, params } = props;
         const { sessionName } = params;
 
-        await this.checkSession(sessionName);
         const sessionData = await sessionManager.getSessionStatus(sessionName);
         if (!sessionData) {
             throw new ErrorResponse(404, "SESSION_NOT_FOUND", "Session not found");
@@ -83,7 +69,6 @@ export class SessionService {
     DeleteSession = async (props: IDeleteSession) => {
         const { params, set } = props;
         const { sessionName } = params;
-        await this.checkSession(sessionName);
         await sessionManager.deleteSession(sessionName);
         return ResponseApiSuccess({
             set,
@@ -93,7 +78,6 @@ export class SessionService {
     RestartSession = async (props: IRestartSession) => {
         const { params, set } = props;
         const { sessionName } = params;
-        await this.checkSession(sessionName);
         await sessionManager.restartSession(sessionName);
         return ResponseApiSuccess({
             set,
@@ -101,10 +85,9 @@ export class SessionService {
     }
 
     GetPairingCode = async (props: IGetPairingCode) => {
-        const { params, set, query } = props;
+        const { params, set, query, session } = props;
         const { sessionName } = params;
         const { isNew } = query;
-        const session = await this.checkSession(sessionName);
         if (!session.isPairingCode) {
             throw new ErrorResponse(400, "SESSION_NOT_PAIRING_CODE", "Session not using pairing code");
         }

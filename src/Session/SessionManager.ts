@@ -29,6 +29,7 @@ import { UuidV7 } from '../Helper/uuid';
 import { getAckString } from '../Helper/GetAckString';
 import { uploadFileToS3 } from '../Helper/UploadFileToS3';
 import { Transform } from 'stream';
+import { Contact as ContactModel } from '../Models/Contact';
 
 const printConsole = new PrintConsole();
 
@@ -822,33 +823,58 @@ export class SessionManager {
                     if ((contact.phoneNumber || contact.id).includes("@broadcast")) {
                         continue;
                     }
-                    const sql = `INSERT INTO contacts 
-                    (id, session_id, name, phone_number, verified_name, value, identifier) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                    name = ?,
-                    verified_name = ?,
-                    identifier = ?,
-                    value = ?`;
+                    // const sql = `INSERT INTO contacts 
+                    // (id, session_id, name, phone_number, verified_name, value, identifier) 
+                    // VALUES (?, ?, ?, ?, ?, ?, ?)
+                    // ON DUPLICATE KEY UPDATE
+                    // name = ?,
+                    // verified_name = ?,
+                    // identifier = ?,
+                    // value = ?`;
 
                     const name = contact.verifiedName || contact.name || contact.notify || ""
-                    const phoneNumber = contact.phoneNumber || contact.id
+
+
+                    
+
+
+                    let phoneNumber = contact.phoneNumber || contact.id
+                    if (phoneNumber.includes("@lid")) {
+                        const sessionData = this.getSession(session.sessionName);
+                        if (sessionData) {
+                            const PNFromLID = await sessionData.socket.signalRepository.lidMapping.getPNForLID(phoneNumber);
+                            printConsole.error(`PNFromLID: ${PNFromLID}`);
+                            if (PNFromLID) {
+                                phoneNumber = PNFromLID;
+                            }
+                        }
+                    }
                     const verifiedName = contact.verifiedName ?? ""
-                    const identifier = contact.id.includes("@s.whatsapp.net") || contact.id.includes("@lid") ? 'personal' : contact.id.includes("@g.us") ? 'group' : 'other'
-                    const value = JSON.stringify(contact)
-                    await db.query(sql, [
-                        UuidV7(),
-                        session.id,
+                    const identifier = contact.id.includes("@s.whatsapp.net") ? 'personal' : contact.id.includes("@lid") ? 'personal_id' : contact.id.includes("@g.us") ? 'group' : 'other'
+                    // const value = JSON.stringify(contact)
+                    // await db.query(sql, [
+                    //     UuidV7(),
+                    //     session.id,
+                    //     name,
+                    //     phoneNumber,
+                    //     verifiedName,
+                    //     value,
+                    //     identifier,
+                    //     name,
+                    //     verifiedName,
+                    //     identifier,
+                    //     value
+                    // ]);
+
+                    const contactModel = new ContactModel({
+                        id: UuidV7(),
+                        sessionId: session.id,
                         name,
                         phoneNumber,
                         verifiedName,
-                        value,
-                        identifier,
-                        name,
-                        verifiedName,
-                        identifier,
-                        value
-                    ]);
+                        identifier
+                    });
+                    await contactModel.save(contact);
                 }
             })();
             promises.push(contactPromise);

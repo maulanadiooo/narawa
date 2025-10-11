@@ -17,7 +17,6 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to, message, quotedMessageId } = body;
-        await this.checkSession(sessionName);
         const result: proto.IWebMessageInfo = await sessionManager.sendMessage(sessionName, to, message, 'text', quotedMessageId);
         return ResponseApiSuccess({
             set,
@@ -31,7 +30,6 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to, imageUrl, imageFile, caption } = body;
-        await this.checkSession(sessionName);
         let buffer: Buffer | undefined = undefined
         if (imageFile) {
             const allowedMimeTypes = ["image/jpeg", "image/png", "image/jpg"]
@@ -60,7 +58,6 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to, docFile, docUrl, caption } = body;
-        await this.checkSession(sessionName);
         let buffer: Buffer | undefined = undefined
         if (docFile) {
             const allowedDoctTypes = [
@@ -94,10 +91,9 @@ export class ChatService extends SessionService {
     }
 
     Read = async (props: IRead) => {
-        const { params, set, body } = props;
+        const { params, set, body, session } = props;
         const { sessionName } = params;
         const { to, messageIds } = body;
-        const session = await this.checkSession(sessionName);
         await sessionManager.sendRead(session, to, messageIds);
         return ResponseApiSuccess({
             set,
@@ -108,7 +104,6 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to } = body;
-        await this.checkSession(sessionName);
         await sessionManager.sendTyping(sessionName, to);
         return ResponseApiSuccess({
             set,
@@ -119,7 +114,6 @@ export class ChatService extends SessionService {
         const { params, set, body } = props;
         const { sessionName } = params;
         const { to } = body;
-        await this.checkSession(sessionName);
         await sessionManager.stopTyping(sessionName, to);
         return ResponseApiSuccess({
             set,

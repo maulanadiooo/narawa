@@ -3,12 +3,15 @@ import { GetQrDataQuery, PairingCodeQuery, SessionCreateDto, SessionParamsDto } 
 import { SessionService } from "./Service";
 import { ChatController } from "./Chat/Controller";
 import { ApiKeyHeader } from "../../Helper/GlobalInterfaceService";
+import { sessionMiddleware } from "../../Middleware/session.middleware";
+import { ContactController } from "../Contact/Controller";
 const sessionService = new SessionService();
 
 
 const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
-    .get("/qr", async ({ params, set, query }) => {
-        return sessionService.GetQrData({ params, set, query })
+    .use(sessionMiddleware)
+    .get("/qr", async ({ params, set, query, session }) => {
+        return sessionService.GetQrData({ params, set, query, session })
     }, {
         params: SessionParamsDto,
         query: GetQrDataQuery,
@@ -18,8 +21,8 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
             description: "Get QR String, query is_image is optional"
         }
     })
-    .get("/code", async ({ params, set, query }) => {
-        return sessionService.GetPairingCode({ params, set, query })
+    .get("/code", async ({ params, set, query, session }) => {
+        return sessionService.GetPairingCode({ params, set, query, session })
     }, {
         params: SessionParamsDto,
         query: PairingCodeQuery,
@@ -29,8 +32,8 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
             description: "Get Pairing Code"
         }
     })
-    .get("/status", async ({ params, set }) => {
-        return sessionService.GetStatus({ params, set })
+    .get("/status", async ({ params, set, session }) => {
+        return sessionService.GetStatus({ params, set, session })
     }, {
         params: SessionParamsDto,
         headers: ApiKeyHeader,
@@ -39,8 +42,8 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
             description: "Check Session Status"
         }
     })
-    .delete("/", async ({ set, params }) => {
-        return sessionService.DeleteSession({ params, set })
+    .delete("/", async ({ set, params, session }) => {
+        return sessionService.DeleteSession({ params, set, session })
     }, {
         params: SessionParamsDto,
         headers: ApiKeyHeader,
@@ -49,8 +52,8 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
             description: "Delete Session"
         }
     })
-    .patch("/", async ({ set, params }) => {
-        return sessionService.RestartSession({ params, set })
+    .patch("/", async ({ set, params, session }) => {
+        return sessionService.RestartSession({ params, set, session })
     }, {
         params: SessionParamsDto,
         headers: ApiKeyHeader,
@@ -60,6 +63,7 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
         }
     })
     .use(ChatController)
+    .use(ContactController)
 
 export const SessionController = new Elysia({ prefix: "/sessions" })
     .post("/create", async ({ set, body }) => {

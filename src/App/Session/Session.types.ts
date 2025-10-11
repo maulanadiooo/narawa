@@ -1,5 +1,6 @@
 import { Static, t } from "elysia";
 import { IGlobalInterfaceService } from "../../Helper/GlobalInterfaceService";
+import { ISession } from "../../Types";
 
 export const SessionCreateDto = t.Object({
     sessionName: t.String({
@@ -21,6 +22,7 @@ export const SessionParamsDto = t.Object({
 
 export interface BaseSessionParams extends IGlobalInterfaceService {
     params: Static<typeof SessionParamsDto>
+    session: ISession
 }
 
 export const GetQrDataQuery = t.Optional(t.Object({

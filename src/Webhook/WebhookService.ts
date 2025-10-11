@@ -14,7 +14,6 @@ export class WebhookService {
     async sendEvent(props: IWebhookSendData): Promise<void> {
         const { sessionId, webhookUrl, eventType, eventData } = props;
         if (!webhookUrl) {
-            printConsole.warning('Webhook URL not configured, skipping event');
             return;
         }
         let idEvent: string | undefined;
@@ -46,9 +45,6 @@ export class WebhookService {
             if (idEvent) {
                 await this.updateEventStatus(idEvent, 'sent');
             }
-            
-
-            printConsole.info(`Webhook event sent successfully: ${eventType} for session ${sessionId}`);
         } catch (error) {
             printConsole.error(`Failed to send webhook event: ${(error as Error).message}`);
 

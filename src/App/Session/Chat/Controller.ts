@@ -3,12 +3,13 @@ import { SessionParamsDto } from "../Session.types";
 import { ReadBodyDto, SendImageDto, SendTextBody, TypingBodyDto } from "./Chat.types";
 import { ChatService } from "./Service";
 import { ApiKeyHeader } from "../../../Helper/GlobalInterfaceService";
+import { sessionMiddleware } from "../../../Middleware/session.middleware";
 const chatService = new ChatService();
 
 export const ChatController = new Elysia({ prefix: "/chat" })
-
-    .post("/send-text", async ({ set, body, params }) => {
-        return chatService.SendText({ set, body, params })
+    .use(sessionMiddleware)
+    .post("/send-text", async ({ set, body, params, session }) => {
+        return chatService.SendText({ set, body, params, session })
     }, {
         body: SendTextBody,
         params: SessionParamsDto,
@@ -18,8 +19,8 @@ export const ChatController = new Elysia({ prefix: "/chat" })
             description: "Send Text Message"
         }
     })
-    .post("/send-image", async ({ set, body, params }) => {
-        return chatService.SendImage({ set, body, params })
+    .post("/send-image", async ({ set, body, params, session }) => {
+        return chatService.SendImage({ set, body, params, session })
     }, {
         body: SendImageDto,
         params: SessionParamsDto,
@@ -29,8 +30,8 @@ export const ChatController = new Elysia({ prefix: "/chat" })
             description: "Send Image Message"
         }
     })
-    .post("/send-document", async ({ set, body, params }) => {
-        return chatService.SendDocument({ set, body, params })
+    .post("/send-document", async ({ set, body, params, session }) => {
+        return chatService.SendDocument({ set, body, params, session })
     }, {
         body: SendImageDto,
         params: SessionParamsDto,
@@ -40,8 +41,8 @@ export const ChatController = new Elysia({ prefix: "/chat" })
             description: "Send Document Message"
         }
     })
-    .patch("/read", async ({ set, body, params }) => {
-        return chatService.Read({ set, body, params })
+    .patch("/read", async ({ set, body, params, session }) => {
+        return chatService.Read({ set, body, params, session })
     }, {
         body: ReadBodyDto,
         params: SessionParamsDto,
@@ -51,8 +52,8 @@ export const ChatController = new Elysia({ prefix: "/chat" })
             description: "Mark as Read"
         }
     })
-    .post("/typing", async ({ set, body, params }) => {
-        return chatService.Typing({ set, body, params })
+    .post("/typing", async ({ set, body, params, session }) => {
+        return chatService.Typing({ set, body, params, session })
     }, {
         body: TypingBodyDto,
         params: SessionParamsDto,
@@ -62,8 +63,8 @@ export const ChatController = new Elysia({ prefix: "/chat" })
             description: "Show Typing"
         }
     })
-    .patch("/stop-typing", async ({ set, body, params }) => {
-        return chatService.StopTyping({ set, body, params })
+    .patch("/stop-typing", async ({ set, body, params, session }) => {
+        return chatService.StopTyping({ set, body, params, session })
     }, {
         body: TypingBodyDto,
         params: SessionParamsDto,

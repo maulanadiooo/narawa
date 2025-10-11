@@ -81,7 +81,7 @@ export interface WebhookEvent {
   timestamp: string;
 }
 
-export type WebhookEventType = 
+export type WebhookEventType =
   | 'session.connected'
   | 'session.retry'
   | 'session.disconnected'
@@ -238,4 +238,13 @@ export const getMessageStatusText = (status: number): string => {
     default:
       return 'unknown';
   }
+}
+
+export interface IContact {
+  id: string;
+  sessionId: string;
+  name?: string;
+  phoneNumber?: string;
+  verifiedName?: string;
+  identifier: 'personal' | 'personal_id' | 'group' | 'other';
 }

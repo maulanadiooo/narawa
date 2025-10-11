@@ -58,23 +58,14 @@ const appServer = new Elysia()
       let htmlReplace = html.replaceAll("{{WEBSITE_URL}}", Bun.env.WEBSITE_URL ?? 'url not publish yet');
       return htmlReplace
     } else if (error instanceof ValidationError) {
-      const jsonMessage = JSON.parse(error.message);
-      const { summary, errors } = jsonMessage;
-      let errorsData: any[] = [];
-      for (const error of errors) {
-        const { path, message, schema } = error;
-        errorsData.push({
-          field: path.replace("/", ""),
-          message: message,
-        })
-      }
+      
+      const errorMessage = error.customError ?? error.valueError?.message ?? error.message;
       return ResponseApi({
         set: set,
         status: false,
         statusCode: 400,
         code: `VALIDATION_ERROR`,
-        error: errorsData,
-        msg: `Validation error`,
+        msg: errorMessage,
       })
     } else if (code === "INTERNAL_SERVER_ERROR") {
       return ResponseApi({
