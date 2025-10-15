@@ -13,6 +13,7 @@ import {
     Contact,
     WASocket,
     UserFacingSocketConfig,
+    fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
@@ -146,6 +147,7 @@ export class SessionManager {
     private initializeSession = async (session: ISession): Promise<void> => {
         try {
             const { state, saveCreds, removeCreds } = await useMySQLAuthState(session.id);
+            const { version, isLatest } = await fetchLatestBaileysVersion()
             const waSocketOptions: UserFacingSocketConfig = {
                 auth: {
                     creds: state.creds,
@@ -160,6 +162,7 @@ export class SessionManager {
                 maxMsgRetryCount: 5,
                 markOnlineOnConnect: false,
                 syncFullHistory: true,
+                version,
             }
             if (!session.isPairingCode) {
                 waSocketOptions.browser = Browsers.macOS('Desktop');
@@ -209,6 +212,7 @@ export class SessionManager {
         const { connection, lastDisconnect, qr, isNewLogin } = update;
 
         if (qr) {
+            printConsole.warning(`QR code received for session ${session.sessionName}`);
             // Generate QR code as base64
             try {
                 const qrCodeBase64 = await qrcode.toDataURL(qr);
