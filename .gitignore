@@ -47,3 +47,7 @@ package-lock.json
 .idea
 /public
 bun.lock
+.env.production
+docker-compose.yml
+Dockerfile
+update_narawa.sh
