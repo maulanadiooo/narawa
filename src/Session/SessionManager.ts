@@ -99,11 +99,6 @@ export class SessionManager {
 
       for (const session of activeSessions) {
         if (session.isActive && session.status === "connected") {
-
-          printConsole.info(`Removing all session detail from database for session: ${session.sessionName}`);
-          // remove all session detail from database all like app-state-sync
-          const sqlSessionDetails = 'DELETE FROM session_details WHERE session_id = ? AND name LIKE ?';
-          await db.query(sqlSessionDetails, [session.id, 'app-state-sync-%']);
           printConsole.info(`Reloading session: ${session.sessionName}`);
           try {
             await this.initializeSession(session);
