@@ -9,6 +9,7 @@ import { ApiController } from "./Routes/api";
 import { SessionManager } from "./Session/SessionManager";
 import { staticPlugin } from '@elysiajs/static'
 import { openapi } from '@elysiajs/openapi'
+import { checkBasicAuth } from "./Helper/BasicAuth";
 
 export const sessionManager = new SessionManager();
 export const printConsole = new PrintConsole();
@@ -29,11 +30,6 @@ const appServer = new Elysia()
     return {
       start: Date.now()
     }
-  })
-  .onAfterHandle(({ request, set, start, body, headers, params, response }) => {
-    const url = request.url;
-    const ms = Date.now();
-    // printConsole.info(`${request.method.toUpperCase()} ${url} ::: ${set.status} ::: ${ms - start} ms`)
   })
   .error({
     ErrorResponse
@@ -92,6 +88,16 @@ const appServer = new Elysia()
         msg: `Something bad happen,try again later`,
         code: "UNKNOWN_ERROR",
       })
+    }
+  })
+  .onBeforeHandle(({ path, headers, set }) => {
+    // Hanya apply untuk route documentation
+    if (path === '/documentation' && Bun.env.PROTECT_DOCUMENTATION === 'true') {
+      if (!checkBasicAuth(headers)) {
+        set.status = 401;
+        set.headers['WWW-Authenticate'] = 'Basic realm="API Documentation"';
+        return 'Authentication required';
+      }
     }
   })
   .use(openapi({
