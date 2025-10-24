@@ -18,6 +18,7 @@ export class Session implements ISession {
     public isPairingCode?: boolean;
     public pairingStatus?: 'pending' | 'paired';
     public pairingCode?: string;
+    public waVersion: string;
 
     constructor(data: Partial<ISession> & Partial<SessionData> = {}) {
         this.id = data.id || UuidV7();
@@ -34,12 +35,13 @@ export class Session implements ISession {
         this.isPairingCode = data.is_pairing_code || data.isPairingCode;
         this.pairingStatus = data.pairing_status || data.pairingStatus;
         this.pairingCode = data.pairing_code || data.pairingCode;
+        this.waVersion = data.wa_version || data.waVersion || '';
     }
 
     async save(): Promise<void> {
         const sql = `
-            INSERT INTO sessions (id, session_name, phone_number, status, qr_code, auth_state, is_active, webhook_url, is_pairing_code, pairing_status, pairing_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sessions (id, session_name, phone_number, status, qr_code, auth_state, is_active, webhook_url, is_pairing_code, pairing_status, pairing_code, wa_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             phone_number = VALUES(phone_number),
             status = VALUES(status),
@@ -50,6 +52,7 @@ export class Session implements ISession {
             is_pairing_code = VALUES(is_pairing_code),
             pairing_status = VALUES(pairing_status),
             pairing_code = VALUES(pairing_code),
+            wa_version = VALUES(wa_version),
             updated_at = CURRENT_TIMESTAMP
         `;
 
@@ -64,7 +67,8 @@ export class Session implements ISession {
             this.webhookUrl ?? "",
             this.isPairingCode ?? false,
             this.pairingStatus ?? null,
-            this.pairingCode ?? null
+            this.pairingCode ?? null,
+            this.waVersion
         ]);
     }
 

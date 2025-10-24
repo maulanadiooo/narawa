@@ -1,4 +1,5 @@
 import { proto, WASocket } from '@whiskeysockets/baileys';
+import { LabelAssociationTypes } from '@whiskeysockets/baileys/lib/Types/LabelAssociation';
 
 // Session related types
 export interface ISession {
@@ -16,6 +17,7 @@ export interface ISession {
   updatedAt?: Date;
   lastSeen?: Date;
   webhookUrl?: string;
+  waVersion: string;
 }
 
 export type SessionStatus = 'connecting' | 'connected' | 'disconnected' | 'qr_required';
@@ -141,6 +143,7 @@ export interface SessionData {
   is_pairing_code?: boolean;
   pairing_status?: 'pending' | 'paired';
   pairing_code?: string;
+  wa_version: string;
 }
 
 // export interface MessageData {
@@ -247,4 +250,22 @@ export interface IContact {
   phoneNumber?: string;
   verifiedName?: string;
   identifier: 'personal' | 'lid' | 'group' | 'other';
+}
+
+export interface ILabelsAssociation {
+  id: string;
+  sessionId: string;
+  labelId: string;
+  type: LabelAssociationTypes;
+  chatId: string;
+  messageId: string;
+}
+
+export interface ILabels {
+  id: string;
+  sessionId: string;
+  labelId: string;
+  name: string;
+  color: string;
+  isDeleted: boolean;
 }

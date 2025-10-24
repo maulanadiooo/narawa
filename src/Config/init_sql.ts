@@ -51,7 +51,8 @@ export const initDatabase = async (pool: Pool) => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         last_seen TIMESTAMP NULL,
         is_active BOOLEAN DEFAULT TRUE,
-        webhook_url TEXT DEFAULT NULL
+        webhook_url TEXT DEFAULT NULL,
+        wa_version VARCHAR(100) NOT NULL
     );`
     // const sqlTableMessage = `CREATE TABLE IF NOT EXISTS messages (
     //     id VARCHAR(36) PRIMARY KEY,
@@ -116,6 +117,28 @@ export const initDatabase = async (pool: Pool) => {
         verified_name VARCHAR(256) NOT NULL,
         value JSON NOT NULL,
         identifier VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )`
+
+    const sqlTabelLabels = `CREATE TABLE IF NOT EXISTS labels (
+        id VARCHAR(36) PRIMARY KEY,
+        session_id VARCHAR(36) NOT NULL,
+        label_id VARCHAR(20) NOT NULL,
+        name VARCHAR(256) NOT NULL,
+        color VARCHAR(100) NOT NULL,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )`
+
+    const sqlTableLabelAssociations = `CREATE TABLE IF NOT EXISTS label_associations (
+        id VARCHAR(36) PRIMARY KEY,
+        session_id VARCHAR(36) NOT NULL,
+        label_id VARCHAR(20) NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        chat_id VARCHAR(36) NOT NULL,
+        message_id VARCHAR(36) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )`
@@ -257,6 +280,35 @@ export const initDatabase = async (pool: Pool) => {
             column: 'message_id',
             sql: `ALTER TABLE messages ADD UNIQUE KEY unique_messages_session_id_message_id (session_id, message_id);`
         },
+        {
+            name: 'idx_labels_session_id',
+            table: 'labels',
+            column: 'session_id',
+            sql: `CREATE INDEX idx_labels_session_id ON labels(session_id);`
+        },
+
+        
+        {
+            name: 'unique_label_session_id_label_id',
+            table: 'labels',
+            column: 'session_id',
+            sql: `ALTER TABLE labels ADD UNIQUE KEY unique_label_session_id_label_id (session_id, label_id);`
+        },
+        
+        {
+            name: 'idx_labels_association_session_id',
+            table: 'label_associations',
+            column: 'session_id',
+            sql: `CREATE INDEX idx_labels_association_session_id ON label_associations(session_id);`
+        },
+
+        
+        {
+            name: 'unique_label_session_association_id_label_id',
+            table: 'label_associations',
+            column: 'session_id',
+            sql: `ALTER TABLE label_associations ADD UNIQUE KEY unique_label_session_association_id_label_id (session_id, label_id);`
+        },
     ]
 
     try {
@@ -282,6 +334,12 @@ export const initDatabase = async (pool: Pool) => {
 
         await pool.execute(sqlTableContacts);
         printConsole.success('Contacts table ready');
+
+        await pool.execute(sqlTabelLabels);
+        printConsole.success('Labels table ready');
+
+        await pool.execute(sqlTableLabelAssociations);
+        printConsole.success('Label associations table ready');
 
         // Create indexes if they don't exist
         printConsole.info('Checking and creating indexes...');

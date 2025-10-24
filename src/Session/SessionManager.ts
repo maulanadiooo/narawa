@@ -19,11 +19,11 @@ import {
   WASocket,
   UserFacingSocketConfig,
   fetchLatestBaileysVersion,
+  WAVersion,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import qrcode from "qrcode";
 import P from "pino";
-import { existsSync, rmdirSync } from "fs";
 import { Session } from "../Models/Session";
 import { WebhookService } from "../Webhook/WebhookService";
 import { ISession, SessionManagerData, MessageData } from "../Types";
@@ -34,8 +34,11 @@ import { db } from "..";
 import { UuidV7 } from "../Helper/uuid";
 import { getAckString } from "../Helper/GetAckString";
 import { uploadFileToS3 } from "../Helper/UploadFileToS3";
-import { Transform } from "stream";
 import { Contact as ContactModel } from "../Models/Contact";
+import { LabelAssociation as LabelAssociationModel } from "../Models/LabelsAssociation";
+import { Labels as LabelsModel } from "../Models/Labels";
+import { LabelAssociation, LabelAssociationType, MessageLabelAssociation } from "@whiskeysockets/baileys/lib/Types/LabelAssociation";
+import { Label } from "@whiskeysockets/baileys/lib/Types/Label";
 
 const printConsole = new PrintConsole();
 
@@ -96,6 +99,11 @@ export class SessionManager {
 
       for (const session of activeSessions) {
         if (session.isActive && session.status === "connected") {
+
+          printConsole.info(`Removing all session detail from database for session: ${session.sessionName}`);
+          // remove all session detail from database all like app-state-sync
+          const sqlSessionDetails = 'DELETE FROM session_details WHERE session_id = ? AND name LIKE ?';
+          await db.query(sqlSessionDetails, [session.id, 'app-state-sync-%']);
           printConsole.info(`Reloading session: ${session.sessionName}`);
           try {
             await this.initializeSession(session);
@@ -104,8 +112,7 @@ export class SessionManager {
             );
           } catch (error) {
             printConsole.error(
-              `Failed to reload session ${session.sessionName}: ${
-                (error as Error).message
+              `Failed to reload session ${session.sessionName}: ${(error as Error).message
               }`
             );
             // Mark session as disconnected if reload fails
@@ -157,6 +164,7 @@ export class SessionManager {
       await session.save();
     } else {
       // Create new session
+      const { version, isLatest } = await fetchLatestBaileysVersion();
       session = new Session({
         sessionName: sessionName,
         status: "qr_required",
@@ -164,6 +172,7 @@ export class SessionManager {
         phoneNumber: phoneNumber,
         isPairingCode: phoneNumber ? true : false,
         pairingStatus: phoneNumber ? "pending" : undefined,
+        wa_version: JSON.stringify(version),
       });
       await session.save();
     }
@@ -179,7 +188,8 @@ export class SessionManager {
       const { state, saveCreds, removeCreds } = await useMySQLAuthState(
         session.id
       );
-      const { version, isLatest } = await fetchLatestBaileysVersion();
+      const sessionWaVersion = JSON.parse(session.waVersion) as WAVersion;
+      printConsole.info(`Session ${session.sessionName} using WA version ${sessionWaVersion}`);
       const waSocketOptions: UserFacingSocketConfig = {
         auth: {
           creds: state.creds,
@@ -194,7 +204,7 @@ export class SessionManager {
         maxMsgRetryCount: 5,
         markOnlineOnConnect: false,
         syncFullHistory: true,
-        version,
+        version: sessionWaVersion,
       };
       if (!session.isPairingCode) {
         waSocketOptions.browser = Browsers.macOS("Desktop");
@@ -229,6 +239,39 @@ export class SessionManager {
         await this.handleMessagingHistorySet(session, m);
       });
 
+      socket.ev.on("labels.association", async (labels) => {
+        await this.handleLabelsAssociation(session, labels);
+      })
+
+      socket.ev.on("labels.edit", async (labels) => {
+        await this.handleLabelsEdit(session, labels);
+      })
+
+      socket.ev.on("contacts.upsert", async (contacts) => {
+        printConsole.info("Contacts upsert");
+        printConsole.info(JSON.stringify(contacts, null, 2));
+      })
+
+      socket.ev.on("contacts.update", async (contacts) => {
+        printConsole.info("Contacts update");
+        printConsole.info(JSON.stringify(contacts, null, 2));
+      })
+
+      socket.ev.on("chats.update", async (chats) => {
+        printConsole.info("Chats update");
+        printConsole.info(JSON.stringify(chats, null, 2));
+      })
+
+      socket.ev.on("chats.upsert", async (chats) => {
+        printConsole.info("Chats upsert");
+        printConsole.info(JSON.stringify(chats, null, 2));
+      })
+
+      socket.ev.on("chats.delete", async (chats) => {
+        printConsole.info("Chats delete");
+        printConsole.info(JSON.stringify(chats, null, 2));
+      })
+
       // Update session status
       session.status = "connecting";
       await (session as Session).save();
@@ -236,8 +279,7 @@ export class SessionManager {
       printConsole.info(`Session ${session.sessionName} initialized`);
     } catch (error) {
       printConsole.error(
-        `Failed to initialize session ${session.sessionName}: ${
-          (error as Error).message
+        `Failed to initialize session ${session.sessionName}: ${(error as Error).message
         }`
       );
       throw new ErrorResponse(
@@ -247,6 +289,97 @@ export class SessionManager {
       );
     }
   };
+
+  private getColorHexFromId = (id: number): string => {
+    switch (id) {
+      case 0:
+        return "#ff9485";
+      case 1:
+        return "#64c4ff";
+      case 2:
+        return "#ffd429";
+      case 3:
+        return "#dfaef0";
+      case 4:
+        return "#99b6c1";
+      case 5:
+        return "#55ccb3";
+      case 6:
+        return "#ff9dff";
+      case 7:
+        return "#d3a91d";
+      case 8:
+        return "#ff6666";
+      case 9:
+        return "#d7e752";
+      case 10:
+        return "#00d0e2";
+      case 11:
+        return "#ffc5c7";
+      case 12:
+        return "#93ceac";
+      case 13:
+        return "#f74848";
+      case 14:
+        return "#00a0f2";
+      case 15:
+        return "#83e422";
+      case 16:
+        return "#ffaf04";
+      case 17:
+        return "#b5ebff";
+      case 18:
+        return "#9ba6ff";
+      case 19:
+        return "#9368cf";
+      default:
+        return "#000000";
+    }
+  }
+
+  private handleLabelsEdit = async (session: ISession, labels: Label) => {
+    try {
+      const labelModel = new LabelsModel({
+        id: UuidV7(),
+        sessionId: session.id,
+        labelId: labels.id,
+        name: labels.name,
+        color: this.getColorHexFromId(labels.color),
+        isDeleted: labels.deleted,
+      });
+      await labelModel.save();
+    } catch (error) {
+      printConsole.error(
+        `Failed to handle labels edit: ${(error as Error).message}`
+      );
+    }
+  }
+
+  private handleLabelsAssociation = async (session: ISession, labels: { association: LabelAssociation; type: "add" | "remove" }) => {
+    try {
+      let messageId = '';
+      if (labels.association.type === LabelAssociationType.Message) {
+        messageId = (labels.association as MessageLabelAssociation).messageId;
+      }
+      const labelModel = new LabelAssociationModel({
+        id: UuidV7(),
+        sessionId: session.id,
+        labelId: labels.association.labelId,
+        type: labels.association.type,
+        chatId: labels.association.chatId,
+        messageId: messageId,
+      });
+      if (labels.type === "add") {
+        await labelModel.save();
+      } else {
+        await labelModel.remove();
+      }
+    } catch (error) {
+      printConsole.error(
+        `Failed to handle labels association: ${(error as Error).message}`
+      );
+    }
+  }
 
   private handleConnectionUpdate = async (
     session: ISession,
@@ -260,7 +393,7 @@ export class SessionManager {
       );
       // Generate QR code as base64
       try {
-        const qrCodeBase64 = await qrcode.toDataURL(qr);
+        await qrcode.toDataURL(qr);
         session.qrCode = qr;
         session.status = "qr_required";
         await (session as Session).save();
@@ -269,8 +402,7 @@ export class SessionManager {
         );
       } catch (error) {
         printConsole.error(
-          `Failed to generate QR code for session ${session.sessionName}: ${
-            (error as Error).message
+          `Failed to generate QR code for session ${session.sessionName}: ${(error as Error).message
           }`
         );
       }
@@ -282,14 +414,19 @@ export class SessionManager {
         (lastDisconnect?.error as Boom)?.output?.statusCode !==
         DisconnectReason.loggedOut;
 
+      const shouldChangeWaVersion = (lastDisconnect?.error as Boom)?.output?.statusCode === 405; // method not allowed indicate wa version missmatch
+      if (shouldChangeWaVersion) {
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        session.waVersion = JSON.stringify(version);
+        await (session as Session).save();
+      }
       // Check if it's a conflict error - don't reconnect immediately
       // const isConflictError = lastDisconnect?.error?.message?.includes('conflict') ||
       //                       lastDisconnect?.error?.message?.includes('replaced');
 
       if (shouldReconnect) {
         printConsole.info(
-          `Reconnecting session ${session.sessionName} ${
-            (lastDisconnect?.error as Boom)?.output?.statusCode
+          `Reconnecting session ${session.sessionName} ${(lastDisconnect?.error as Boom)?.output?.statusCode
           }...`
         );
         session.status = "connecting";
@@ -310,8 +447,7 @@ export class SessionManager {
             await this.initializeSession(session);
           } catch (error) {
             printConsole.error(
-              `Failed to reconnect session ${session.sessionName}: ${
-                (error as Error).message
+              `Failed to reconnect session ${session.sessionName}: ${(error as Error).message
               }`
             );
           }
@@ -482,9 +618,8 @@ export class SessionManager {
         });
         if (buffer) {
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              protoImageMessage.mimetype?.split("/")[1] ?? "png"
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split("/")[1] ?? "png"
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -497,9 +632,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              protoImageMessage.mimetype?.split("/")[1] ?? "png"
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${protoImageMessage.mimetype?.split("/")[1] ?? "png"
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -529,9 +663,8 @@ export class SessionManager {
         });
         if (buffer) {
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              protoDocumentMessage.mimetype?.split("/")[1] ?? "pdf"
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split("/")[1] ?? "pdf"
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -544,9 +677,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              protoDocumentMessage.mimetype?.split("/")[1] ?? "pdf"
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${protoDocumentMessage.mimetype?.split("/")[1] ?? "pdf"
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -575,9 +707,8 @@ export class SessionManager {
         });
         if (buffer) {
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              protoVideoMessage.mimetype?.split("/")[1] ?? "mp4"
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split("/")[1] ?? "mp4"
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -590,9 +721,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              protoVideoMessage.mimetype?.split("/")[1] ?? "mp4"
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${protoVideoMessage.mimetype?.split("/")[1] ?? "mp4"
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -622,9 +752,8 @@ export class SessionManager {
         if (buffer) {
           const ext = protoAudioMessage.mimetype?.split("/")[1] ?? "mp3";
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              ext.split(";")[0]
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${ext.split(";")[0]
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -637,9 +766,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              ext.split(";")[0]
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${ext.split(";")[0]
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -669,9 +797,8 @@ export class SessionManager {
         });
         if (buffer) {
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              protoPtvMessage.mimetype?.split("/")[1] ?? "mp4"
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split("/")[1] ?? "mp4"
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -684,9 +811,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              protoPtvMessage.mimetype?.split("/")[1] ?? "mp4"
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${protoPtvMessage.mimetype?.split("/")[1] ?? "mp4"
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -714,9 +840,8 @@ export class SessionManager {
         });
         if (buffer) {
           if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
-            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${
-              protoStickerMessage.mimetype?.split("/")[1] ?? "webp"
-            }`;
+            const pathToSave = `narawa/${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split("/")[1] ?? "webp"
+              }`;
             url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
             const isUploaded = await uploadFileToS3(buffer, pathToSave);
             if (isUploaded) {
@@ -729,9 +854,8 @@ export class SessionManager {
               );
             }
           } else {
-            const keyPath = `${message.key.id}/${UuidV7()}.${
-              protoStickerMessage.mimetype?.split("/")[1] ?? "webp"
-            }`;
+            const keyPath = `${message.key.id}/${UuidV7()}.${protoStickerMessage.mimetype?.split("/")[1] ?? "webp"
+              }`;
             const pathToSave = `./public/${keyPath}`;
             const saveToLocal = await Bun.write(
               pathToSave,
@@ -809,8 +933,8 @@ export class SessionManager {
         const timeStamp = Number(
           // @ts-ignore historychat message saved have .low property
           message.messageTimestamp?.low ??
-            message.messageTimestamp ??
-            Date.now() / 1000
+          message.messageTimestamp ??
+          Date.now() / 1000
         );
         const dataToSave = message
           ? typeof message === "string"
@@ -839,8 +963,7 @@ export class SessionManager {
         await db.query(sql, params);
       } catch (error) {
         printConsole.error(
-          `Failed to save message for session ${session.sessionName}: ${
-            (error as Error).message
+          `Failed to save message for session ${session.sessionName}: ${(error as Error).message
           }`
         );
       }
@@ -913,8 +1036,7 @@ export class SessionManager {
       }
     } catch (error) {
       printConsole.error(
-        `Error handling messages for session ${session.sessionName}: ${
-          (error as Error).message
+        `Error handling messages for session ${session.sessionName}: ${(error as Error).message
         }`
       );
     }
@@ -1039,8 +1161,7 @@ export class SessionManager {
       }
     } catch (error) {
       printConsole.error(
-        `Error handling message updates for session ${session.sessionName}: ${
-          (error as Error).message
+        `Error handling message updates for session ${session.sessionName}: ${(error as Error).message
         }`
       );
     }
@@ -1120,10 +1241,10 @@ export class SessionManager {
           const identifier = contact.id.includes("@s.whatsapp.net")
             ? "personal"
             : contact.id.includes("@lid")
-            ? "lid"
-            : contact.id.includes("@g.us")
-            ? "group"
-            : "other";
+              ? "lid"
+              : contact.id.includes("@g.us")
+                ? "group"
+                : "other";
           // const value = JSON.stringify(contact)
           // await db.query(sql, [
           //     UuidV7(),
@@ -1246,8 +1367,7 @@ export class SessionManager {
       }
     } catch (error) {
       printConsole.error(
-        `Failed to get session status from database: ${
-          (error as Error).message
+        `Failed to get session status from database: ${(error as Error).message
         }`
       );
     }
@@ -1457,8 +1577,7 @@ export class SessionManager {
       return result;
     } catch (error) {
       printConsole.error(
-        `Failed to send message via session ${sessionName}: ${
-          (error as Error).message
+        `Failed to send message via session ${sessionName}: ${(error as Error).message
         }`
       );
       throw new ErrorResponse(
