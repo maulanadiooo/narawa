@@ -18,6 +18,7 @@ export interface ISession {
   lastSeen?: Date;
   webhookUrl?: string;
   waVersion: string;
+  rejectCall?: boolean;
 }
 
 export type SessionStatus = 'connecting' | 'connected' | 'disconnected' | 'qr_required';
@@ -144,6 +145,7 @@ export interface SessionData {
   pairing_status?: 'pending' | 'paired';
   pairing_code?: string;
   wa_version: string;
+  reject_call?: boolean;
 }
 
 // export interface MessageData {

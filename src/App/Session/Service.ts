@@ -2,15 +2,16 @@ import { printConsole, sessionManager } from "../..";
 import { ResponseApiSuccess } from "../../Helper/ResponseApi";
 import { ErrorResponse } from "../../Helper/ResponseError";
 import { CleanUUID } from "../../Helper/uuid";
+import { Session } from "../../Models/Session";
 import { ISession, MessageData } from "../../Types";
-import { IDeleteSession, IGetPairingCode, IGetQrData, IGetStatus, IRestartSession, ISessionCreate } from "./Session.types";
+import { IDeleteSession, IGetPairingCode, IGetQrData, IGetStatus, IRestartSession, ISessionCreate, ISessionPatch } from "./Session.types";
 import qrcode from 'qrcode';
 export class SessionService {
 
     CreateSession = async (props: ISessionCreate) => {
         const { set, body } = props;
-        const { sessionName, webhookUrl, phoneNumber } = body;
-        const session = await sessionManager.createSession(sessionName, webhookUrl, phoneNumber);
+        const { sessionName, webhookUrl, phoneNumber, rejectCall } = body;
+        const session = await sessionManager.createSession(sessionName, webhookUrl, phoneNumber, rejectCall);
 
         return ResponseApiSuccess({
             set, data: {
@@ -110,6 +111,32 @@ export class SessionService {
         }
         return ResponseApiSuccess({
             set, data: { code }
+        })
+    }
+
+    UpdateSession = async (props: ISessionPatch) => {
+        const { params, set, body, session } = props;
+        const { webhookUrl, rejectCall } = body;
+        if (rejectCall === undefined && webhookUrl === undefined) {
+            throw new ErrorResponse(400, "NO_DATA_TO_UPDATE", "No data to update");
+        }
+        if (webhookUrl) {
+            session.webhookUrl = webhookUrl;
+        }
+        if (rejectCall !== undefined) {
+            session.rejectCall = rejectCall;
+        }
+        let updatedSession = sessionManager.getSession(session.sessionName);
+        if (!updatedSession) {
+            throw new ErrorResponse(404, "SESSION_NOT_FOUND", "Session not found");
+        }
+        await (session as Session).save();
+        // update session in memory
+        updatedSession.session = session
+        sessionManager.updateSessionInMemory({ ...updatedSession, session });
+        return ResponseApiSuccess({
+            set,
+            message: "Session updated successfully"
         })
     }
 }

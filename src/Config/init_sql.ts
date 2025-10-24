@@ -19,6 +19,21 @@ const checkIndexExists = async (pool: Pool, indexName: string, tableName: string
     }
 };
 
+const checkTableIfExists = async (pool: Pool, tableName: string, columnName: string): Promise<boolean> => {
+    try {
+        const query = `SELECT COUNT(*) as count 
+FROM information_schema.COLUMNS 
+WHERE TABLE_SCHEMA = DATABASE() 
+AND TABLE_NAME = ? 
+AND COLUMN_NAME = ?`
+        const [result] = await pool.execute(query, [tableName, columnName]);
+        return (result as any[])[0].count > 0;
+    } catch (error) {
+        printConsole.error(`Error checking table ${tableName}: ${(error as Error).message}`);
+        return false;
+    }
+}
+
 // Helper function to create index if it doesn't exist
 const createIndexIfNotExists = async (pool: Pool, indexInfo: any): Promise<void> => {
     const exists = await checkIndexExists(pool, indexInfo.name, indexInfo.table);
@@ -35,6 +50,20 @@ const createIndexIfNotExists = async (pool: Pool, indexInfo: any): Promise<void>
     }
 };
 
+const createTableIfNotExists = async (pool: Pool, tableName: string, columnName: string, sql: string): Promise<void> => {
+    const exists = await checkTableIfExists(pool, tableName, columnName);
+    if (!exists) {
+        try {
+            await pool.execute(sql);
+            printConsole.success(`Table ${tableName} with column ${columnName} created successfully`);
+        } catch (error) {
+            printConsole.error(`Failed to create table ${tableName} with column ${columnName}: ${(error as Error).message}`);
+        }
+    } else {
+        printConsole.info(`Table ${tableName} with column ${columnName} already exists, skipping...`);
+    }
+}
+
 export const initDatabase = async (pool: Pool) => {
     const sqlSession = `CREATE DATABASE IF NOT EXISTS ${Bun.env.DB_NAME};`
     const sqlSessionTable = `CREATE TABLE IF NOT EXISTS sessions (
@@ -47,12 +76,12 @@ export const initDatabase = async (pool: Pool) => {
         is_pairing_code BOOLEAN DEFAULT FALSE,
         pairing_status ENUM('pending', 'paired') NULL,
         auth_state LONGTEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         last_seen TIMESTAMP NULL,
         is_active BOOLEAN DEFAULT TRUE,
         webhook_url TEXT DEFAULT NULL,
-        wa_version VARCHAR(100) NOT NULL
+        wa_version VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );`
     // const sqlTableMessage = `CREATE TABLE IF NOT EXISTS messages (
     //     id VARCHAR(36) PRIMARY KEY,
@@ -142,6 +171,8 @@ export const initDatabase = async (pool: Pool) => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )`
+
+
 
 
 
@@ -248,14 +279,14 @@ export const initDatabase = async (pool: Pool) => {
             column: 'phone_number',
             sql: `ALTER TABLE contacts ADD UNIQUE KEY unique_contacts_phone_number (session_id, phone_number);`
         },
-        
+
         {
             name: 'idx_contacts_identifier',
             table: 'contacts',
             column: 'identifier',
             sql: `CREATE INDEX idx_contacts_identifier ON contacts(identifier);`
         },
-        
+
         {
             name: 'idx_sessions_pairing_code',
             table: 'sessions',
@@ -287,14 +318,14 @@ export const initDatabase = async (pool: Pool) => {
             sql: `CREATE INDEX idx_labels_session_id ON labels(session_id);`
         },
 
-        
+
         {
             name: 'unique_label_session_id_label_id',
             table: 'labels',
             column: 'session_id',
             sql: `ALTER TABLE labels ADD UNIQUE KEY unique_label_session_id_label_id (session_id, label_id);`
         },
-        
+
         {
             name: 'idx_labels_association_session_id',
             table: 'label_associations',
@@ -302,13 +333,29 @@ export const initDatabase = async (pool: Pool) => {
             sql: `CREATE INDEX idx_labels_association_session_id ON label_associations(session_id);`
         },
 
-        
+
         {
             name: 'unique_label_session_association_id_label_id',
             table: 'label_associations',
             column: 'session_id',
             sql: `ALTER TABLE label_associations ADD UNIQUE KEY unique_label_session_association_id_label_id (session_id, label_id);`
         },
+
+        {
+            name: 'idx_reject_call',
+            table: 'sessions',
+            column: 'reject_call',
+            sql: `CREATE INDEX idx_reject_call ON sessions(reject_call);`
+        }
+    ]
+
+    const alterTables = [
+        {
+            name: "add_reject_call_in_session",
+            table: 'sessions',
+            column: 'reject_call',
+            sql: `ALTER TABLE sessions ADD COLUMN reject_call BOOLEAN DEFAULT FALSE AFTER wa_version;`
+        }
     ]
 
     try {
@@ -341,6 +388,12 @@ export const initDatabase = async (pool: Pool) => {
         await pool.execute(sqlTableLabelAssociations);
         printConsole.success('Label associations table ready');
 
+
+        printConsole.info('Checking and creating alter tables...');
+        for (const alterTable of alterTables) {
+            await createTableIfNotExists(pool, alterTable.table, alterTable.column, alterTable.sql);
+        }
+        
         // Create indexes if they don't exist
         printConsole.info('Checking and creating indexes...');
         for (const indexInfo of indexing) {

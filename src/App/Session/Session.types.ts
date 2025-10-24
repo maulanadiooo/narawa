@@ -7,7 +7,8 @@ export const SessionCreateDto = t.Object({
         error: "Session name is required"
     }),
     webhookUrl: t.Optional(t.String({})),
-    phoneNumber: t.Optional(t.String({}))
+    phoneNumber: t.Optional(t.String({})),
+    rejectCall: t.Optional(t.Boolean({}))
 })
 
 export interface ISessionCreate extends IGlobalInterfaceService {
@@ -50,4 +51,11 @@ export interface IGetPairingCode extends BaseSessionParams {
     query: Static<typeof PairingCodeQuery>
  }
 
+export const SessionPatchDto = t.Object({
+    webhookUrl: t.Optional(t.String({})),
+    rejectCall: t.Optional(t.Boolean({}))
+})
 
+export interface ISessionPatch extends BaseSessionParams {
+    body: Static<typeof SessionPatchDto>
+}

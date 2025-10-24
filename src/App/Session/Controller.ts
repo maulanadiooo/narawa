@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { GetQrDataQuery, PairingCodeQuery, SessionCreateDto, SessionParamsDto } from "./Session.types";
+import { GetQrDataQuery, PairingCodeQuery, SessionCreateDto, SessionParamsDto, SessionPatchDto } from "./Session.types";
 import { SessionService } from "./Service";
 import { ChatController } from "./Chat/Controller";
 import { ApiKeyHeader } from "../../Helper/GlobalInterfaceService";
@@ -21,6 +21,17 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
         detail: {
             tags: ['Session'],
             description: "Get QR String, query is_image is optional"
+        }
+    })
+    .patch("/detail", async ({ set, body, params, session }) => {
+        return sessionService.UpdateSession({ set, body, params, session })
+    }, {
+        headers: ApiKeyHeader,
+        params: SessionParamsDto,
+        body: SessionPatchDto,
+        detail: {
+            tags: ['Session'],
+            description: "Update Session Webhook URL or Reject Call"
         }
     })
     .get("/code", async ({ params, set, query, session }) => {

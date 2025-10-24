@@ -254,7 +254,8 @@ export class SessionManager {
   createSession = async (
     sessionName: string,
     webhookUrl?: string,
-    phoneNumber?: string
+    phoneNumber?: string,
+    rejectCall?: boolean
   ): Promise<ISession> => {
     // Check if session already exists in memory
     if (this.sessions.has(sessionName)) {
@@ -290,6 +291,7 @@ export class SessionManager {
         isPairingCode: phoneNumber ? true : false,
         pairingStatus: phoneNumber ? "pending" : undefined,
         wa_version: JSON.stringify(version),
+        reject_call: rejectCall ?? false,
       });
       await session.save();
     }
@@ -316,12 +318,12 @@ export class SessionManager {
     if (!isSaveMedia) {
       return profilePicture;
     }
-    
+
     // download profile picture, get buffer
     let profilePictureBuffer = await fetch(profilePicture);
     const arrayBuffer = await profilePictureBuffer.arrayBuffer();
     let url: string | null = null;
-    const extension = profilePicture.split(".").pop()?.split("?")[0];
+    const extension = profilePicture.split(".").pop()?.split("?")[0] ?? "jpg";
     if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
       const pathToSave = `narawa/${jid}/${UuidV7()}.${extension}`;
 
@@ -419,29 +421,51 @@ export class SessionManager {
         await this.handleLabelsEdit(session, labels);
       })
 
+      socket.ev.on("call", async (call) => {
+        for (const callEvent of call) {
+          printConsole.info(`Call FROM: ${callEvent.from} ${callEvent.id} ${callEvent.date} ${callEvent.status}`);
+          let fromJid = callEvent.from;
+          if (callEvent.from.includes("@lid")) {
+            const PNFromLID = await socket.signalRepository.lidMapping.getPNForLID(
+              callEvent.from
+            );
+            if (PNFromLID) {
+              fromJid = PNFromLID;
+            }
+          }
+          const sessionData = this.sessions.get(session.sessionName);
+          if (sessionData && sessionData.session.rejectCall) {
+
+            printConsole.info(`Rejecting call ${callEvent.id} from ${fromJid}`);
+            // wait 2 seconds before rejecting call when ringing
+            if (callEvent.status === "ringing") {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              socket.rejectCall(callEvent.id, callEvent.from);
+            }
+
+          }
+
+        }
+      })
+
       socket.ev.on("contacts.upsert", async (contacts) => {
-        printConsole.info("Contacts upsert");
-        printConsole.info(JSON.stringify(contacts, null, 2));
+        
       })
 
       socket.ev.on("contacts.update", async (contacts) => {
-        printConsole.info("Contacts update");
-        printConsole.info(JSON.stringify(contacts, null, 2));
+        
       })
 
       socket.ev.on("chats.update", async (chats) => {
-        printConsole.info("Chats update");
-        printConsole.info(JSON.stringify(chats, null, 2));
+        
       })
 
       socket.ev.on("chats.upsert", async (chats) => {
-        printConsole.info("Chats upsert");
-        printConsole.info(JSON.stringify(chats, null, 2));
+        
       })
 
       socket.ev.on("chats.delete", async (chats) => {
-        printConsole.info("Chats delete");
-        printConsole.info(JSON.stringify(chats, null, 2));
+        
       })
 
       // Update session status
@@ -1468,6 +1492,10 @@ export class SessionManager {
   getSession = (sessionName: string): SessionManagerData | undefined => {
     return this.sessions.get(sessionName);
   };
+
+  updateSessionInMemory = (data: SessionManagerData): void => {
+    this.sessions.set(data.session.sessionName, data);
+  }
 
   getAllSessions = async (): Promise<
     Array<{ sessionName: string; status: string; phoneNumber?: string }>
