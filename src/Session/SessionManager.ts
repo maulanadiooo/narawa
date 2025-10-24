@@ -300,6 +300,61 @@ export class SessionManager {
     return session;
   };
 
+  getProfilePicture = async (session: ISession, jid: string): Promise<string> => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    const normalizedJid = this.validateAndNormalizeJid(jid);
+    const profilePicture = await sessionData.socket.profilePictureUrl(normalizedJid, "image");
+    if (!profilePicture) {
+      throw new ErrorResponse(400, "PROFILE_PICTURE_NOT_FOUND", "Profile picture not found");
+    }
+    const isSaveMedia = Bun.env.SAVE_MEDIA === "true";
+    const saveMediaTo = Bun.env.SAVE_MEDIA_TO;
+
+    if (!isSaveMedia) {
+      return profilePicture;
+    }
+    
+    // download profile picture, get buffer
+    let profilePictureBuffer = await fetch(profilePicture);
+    const arrayBuffer = await profilePictureBuffer.arrayBuffer();
+    let url: string | null = null;
+    const extension = profilePicture.split(".").pop()?.split("?")[0];
+    if (saveMediaTo && saveMediaTo?.toLowerCase() === "s3") {
+      const pathToSave = `narawa/${jid}/${UuidV7()}.${extension}`;
+
+      url = `${Bun.env.S3_URL ?? Bun.env.S3_ENDPOINT}/${pathToSave}`;
+      const isUploaded = await uploadFileToS3(arrayBuffer, pathToSave);
+      if (isUploaded) {
+        printConsole.success(
+          `Profile picture ${jid} uploaded to S3 ${url}`
+        );
+      } else {
+        printConsole.error(
+          `Profile picture ${jid} failed to upload to S3`
+        );
+      }
+    } else {
+      const keyPath = `${jid}/${UuidV7()}.${extension}`;
+      const pathToSave = `./public/${keyPath}`;
+      await Bun.write(
+        pathToSave,
+        new Blob([arrayBuffer])
+      );
+      let websiteUrl = Bun.env.WEBSITE_URL ?? "";
+      if (!websiteUrl?.endsWith("/")) {
+        websiteUrl += "/";
+      }
+      url = `${websiteUrl}media/${keyPath}`;
+      printConsole.success(
+        `Profile picture ${jid} saved to local ${url}`
+      );
+    }
+    return url;
+  }
+
   private initializeSession = async (session: ISession): Promise<void> => {
     try {
       const { state, saveCreds, removeCreds } = await useMySQLAuthState(
@@ -696,8 +751,8 @@ export class SessionManager {
       message.message?.extendedTextMessage?.text ||
       message.message?.conversation ||
       message.message?.protocolMessage?.editedMessage?.conversation ||
-      message.message?.protocolMessage?.editedMessage?.extendedTextMessage
-        ?.text ||
+      message.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
+      message.message?.templateMessage?.hydratedTemplate?.hydratedContentText ||
       "";
 
     // Check if message.key exists

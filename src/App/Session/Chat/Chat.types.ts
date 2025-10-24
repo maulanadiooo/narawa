@@ -1,5 +1,5 @@
 import { Static, t } from "elysia"
-import { BaseSessionParams } from "../Session.types"
+import { BaseSessionParams, SessionParamsDto } from "../Session.types"
 
 export const SendTextBody = t.Object({
     to: t.String({
@@ -83,4 +83,17 @@ export const TypingBodyDto = t.Object({
 
 export interface ITyping extends BaseSessionParams {
     body: Static<typeof TypingBodyDto>
+}
+
+export const GetProfilePictureParamsDto = t.Intersect([
+    SessionParamsDto,
+    t.Object({
+        phoneNumber: t.String({
+            error: "Phone number is required"
+        })
+    })
+])
+
+export interface IGetProfilePicture extends BaseSessionParams {
+    params: Static<typeof GetProfilePictureParamsDto>
 }

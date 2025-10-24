@@ -5,7 +5,7 @@ import { ErrorResponse } from "../../../Helper/ResponseError";
 import { CleanUUID } from "../../../Helper/uuid";
 import { MessageData } from "../../../Types";
 import { SessionService } from "../Service";
-import { IRead, ISendDoc, ISendImage, ISendText, ITyping } from "./Chat.types";
+import { IGetProfilePicture, IRead, ISendDoc, ISendImage, ISendText, ITyping } from "./Chat.types";
 
 export class ChatService extends SessionService {
 
@@ -117,6 +117,18 @@ export class ChatService extends SessionService {
         await sessionManager.stopTyping(sessionName, to);
         return ResponseApiSuccess({
             set,
+        })
+    }
+
+    GetProfilePicture = async (props: IGetProfilePicture) => {
+        const { params, set, session } = props;
+        const { phoneNumber } = params;
+        const profilePicture = await sessionManager.getProfilePicture(session, phoneNumber);
+        return ResponseApiSuccess({
+            set,
+            data: {
+                url: profilePicture
+            }
         })
     }
 }

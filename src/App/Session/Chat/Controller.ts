@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import { SessionParamsDto } from "../Session.types";
-import { ReadBodyDto, SendImageDto, SendTextBody, TypingBodyDto } from "./Chat.types";
+import { GetProfilePictureParamsDto, ReadBodyDto, SendImageDto, SendTextBody, TypingBodyDto } from "./Chat.types";
 import { ChatService } from "./Service";
 import { ApiKeyHeader } from "../../../Helper/GlobalInterfaceService";
 import { sessionMiddleware } from "../../../Middleware/session.middleware";
@@ -72,5 +72,15 @@ export const ChatController = new Elysia({ prefix: "/chat" })
         detail: {
             tags: ['Chat'],
             description: "Stop Typing"
+        }
+    })
+    .get("/profile-picture/:phoneNumber", async ({ set, params, session }) => {
+        return chatService.GetProfilePicture({ set, params, session })
+    }, {
+        params: GetProfilePictureParamsDto,
+        headers: ApiKeyHeader,
+        detail: {
+            tags: ['Chat'],
+            description: "Get Profile Picture"
         }
     })

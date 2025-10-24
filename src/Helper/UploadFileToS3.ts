@@ -1,7 +1,7 @@
 import { S3Client } from "bun"
 import { printConsole } from "..";
 
-export const uploadFileToS3 = async (file: Buffer, pathSave: string) => {
+export const uploadFileToS3 = async (file: Buffer | ArrayBuffer, pathSave: string) => {
     try {
         const bucket = new S3Client({
             endpoint: Bun.env.S3_ENDPOINT,
