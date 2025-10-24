@@ -82,26 +82,34 @@ const parseTimestamp = (timestamp: string | number | Long) => {
 }
 
 export const fromObject = (args: AppDataSync) => {
-	const f: Fingerprint = {
-		...args.fingerprint,
-		deviceIndexes: Array.isArray(args.fingerprint.deviceIndexes) ? args.fingerprint.deviceIndexes : []
-	}
+    const f: Fingerprint = {
+        ...args.fingerprint,
+        deviceIndexes: Array.isArray(args.fingerprint?.deviceIndexes) ? args.fingerprint.deviceIndexes : []
+    }
 
-	const message = {
-		keyData: Array.isArray(args.keyData) ? args.keyData : new Uint8Array(),
-		fingerprint: {
-			rawId: f.rawId || 0,
-			currentIndex: f.rawId || 0,
-			deviceIndexes: f.deviceIndexes
-		},
-		timestamp: parseTimestamp(args.timestamp)
-	}
+    // Normalize keyData from possible serialized forms
+    let normalizedKeyData: Uint8Array = new Uint8Array()
+    const kd: any = (args as any).keyData
+    if (typeof kd === 'string') {
+        // stored as base64 string
+        normalizedKeyData = Uint8Array.from(Buffer.from(kd, 'base64'))
+    } else if (Buffer.isBuffer(kd)) {
+        normalizedKeyData = Uint8Array.from(kd)
+    } else if (kd instanceof Uint8Array) {
+        normalizedKeyData = kd
+    } else if (Array.isArray(kd)) {
+        normalizedKeyData = Uint8Array.from(kd)
+    }
 
-	if (typeof args.keyData === "string") {
-		message.keyData = allocate(args.keyData)
-	}
-
-	return message
+    return {
+        keyData: normalizedKeyData,
+        fingerprint: {
+            rawId: f.rawId || 0,
+            currentIndex: f.currentIndex || 0,
+            deviceIndexes: f.deviceIndexes
+        },
+        timestamp: parseTimestamp(args.timestamp)
+    }
 }
 
 export const BufferJSON = {
