@@ -6,6 +6,7 @@ import { ApiKeyHeader } from "../../Helper/GlobalInterfaceService";
 import { sessionMiddleware } from "../../Middleware/session.middleware";
 import { ContactController } from "../Contact/Controller";
 import { MessageController } from "../Message/Controller";
+import { LabelController } from "../Label/Controller";
 const sessionService = new SessionService();
 
 
@@ -66,13 +67,15 @@ const HandleSessionRequest = new Elysia({ prefix: "/:sessionName" })
     .use(ChatController)
     .use(ContactController)
     .use(MessageController)
+    .use(LabelController)
 
 export const SessionController = new Elysia({ prefix: "/sessions" })
     .post("/create", async ({ set, body }) => {
         return sessionService.CreateSession({ set, body })
     }, {
         body: SessionCreateDto,
-        headers: ApiKeyHeader, detail: {
+        headers: ApiKeyHeader,
+        detail: {
             tags: ['Session'],
             description: `# Create session \n
 webhookUrl is optional \n

@@ -92,6 +92,128 @@ export class SessionManager {
     }
   };
 
+  addLabel = async (session: ISession, label: string,) => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    const normalizedPhoneNumber = this.validateAndNormalizeJid(session.phoneNumber ?? "");
+    try {
+      const labelModel = new LabelsModel();
+      const lastLabelId = await labelModel.lastLabelId(session);
+      let nextLabelId = UuidV7();
+      if (lastLabelId !== '' && !isNaN(Number(lastLabelId))) {
+        nextLabelId = String(Number(lastLabelId) + 1);
+      }
+      // color random from 0 to 19
+      const color = Math.floor(Math.random() * 20);
+      await sessionData.socket.addLabel(normalizedPhoneNumber, {
+        id: nextLabelId,
+        name: label,
+        color,
+      });
+      return nextLabelId;
+    } catch (error) {
+      printConsole.error(
+        `Failed to add label: ${(error as Error).message}`
+      );
+      throw new ErrorResponse(400, "FAILED_TO_ADD_LABEL", "Failed to add label");
+    }
+  }
+
+  private checkLabelIdExists = async (session: ISession, labelId: string): Promise<boolean> => {
+    const labelModel = new LabelsModel();
+    const labelIdExists = await labelModel.checkLabelIdExists(session, labelId);
+    if (!labelIdExists) {
+      throw new ErrorResponse(400, "LABEL_NOT_FOUND", "Label not found");
+    }
+    return labelIdExists;
+  }
+
+  private checkLabelAssociationExists = async (session: ISession, labelId: string, chatId: string): Promise<boolean> => {
+    const labelAssociationModel = new LabelAssociationModel();
+    const labelAssociationExists = await labelAssociationModel.checkLabelAssociationExists(session, labelId, chatId);
+    if (!labelAssociationExists) {
+      throw new ErrorResponse(400, "LABEL_ASSOCIATION_NOT_FOUND", "Label association not found");
+    }
+    return labelAssociationExists;
+  }
+
+  removeLabel = async (session: ISession, labelId: string) => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    await this.checkLabelIdExists(session, labelId);
+    const normalizedPhoneNumber = this.validateAndNormalizeJid(session.phoneNumber ?? "");
+    try {
+      await sessionData.socket.addLabel(normalizedPhoneNumber, {
+        id: labelId,
+        name: '',
+        deleted: true,
+      });
+    } catch (error) {
+      printConsole.error(
+        `Failed to remove label: ${(error as Error).message}`
+      );
+      throw new ErrorResponse(400, "FAILED_TO_REMOVE_LABEL", "Failed to remove label");
+    }
+  }
+
+  editLabel = async (session: ISession, labelId: string, name: string) => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    await this.checkLabelIdExists(session, labelId);
+    const normalizedPhoneNumber = this.validateAndNormalizeJid(session.phoneNumber ?? "");
+    try {
+      await sessionData.socket.addLabel(normalizedPhoneNumber, {
+        id: labelId,
+        name: name,
+      });
+    } catch (error) {
+      printConsole.error(
+        `Failed to edit label: ${(error as Error).message}`
+      );
+      throw new ErrorResponse(400, "FAILED_TO_EDIT_LABEL", "Failed to edit label");
+    }
+  }
+
+  assignLabelChat = async (session: ISession, phoneNumber: string, labelId: string) => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    const normalizedPhoneNumber = this.validateAndNormalizeJid(phoneNumber);
+    await this.checkLabelIdExists(session, labelId);
+    try {
+      await sessionData.socket.addChatLabel(normalizedPhoneNumber, labelId);
+    } catch (error) {
+      printConsole.error(
+        `Failed to assign label to chat: ${(error as Error).message}`
+      );
+      throw new ErrorResponse(400, "FAILED_TO_ASSIGN_LABEL_TO_CHAT", "Failed to assign label to chat");
+    }
+  }
+
+  removeLabelChat = async (session: ISession, phoneNumber: string, labelId: string) => {
+    let sessionData = this.sessions.get(session.sessionName);
+    if (!sessionData) {
+      throw new ErrorResponse(400, "SESSION_NOT_FOUND", "Session not found");
+    }
+    const normalizedPhoneNumber = this.validateAndNormalizeJid(phoneNumber);
+    await this.checkLabelAssociationExists(session, labelId, normalizedPhoneNumber);
+    try {
+      await sessionData.socket.removeChatLabel(normalizedPhoneNumber, labelId);
+    } catch (error) {
+      printConsole.error(
+        `Failed to remove label from chat: ${(error as Error).message}`
+      );
+      throw new ErrorResponse(400, "FAILED_TO_REMOVE_LABEL_FROM_CHAT", "Failed to remove label from chat");
+    }
+  }
+
   loadActiveSessions = async (): Promise<void> => {
     try {
       printConsole.info("Loading active sessions from database...");
@@ -328,21 +450,25 @@ export class SessionManager {
       case 19:
         return "#9368cf";
       default:
-        return "#000000";
+        return "#ff9485";
     }
   }
 
   private handleLabelsEdit = async (session: ISession, labels: Label) => {
     try {
-      const labelModel = new LabelsModel({
-        id: UuidV7(),
-        sessionId: session.id,
-        labelId: labels.id,
-        name: labels.name,
-        color: this.getColorHexFromId(labels.color),
-        isDeleted: labels.deleted,
-      });
-      await labelModel.save();
+      if (!isNaN(Number(labels.id))) {
+        // only save numeric string label id, so we can increment it later, like whatsapp does
+        const labelModel = new LabelsModel({
+          id: UuidV7(),
+          sessionId: session.id,
+          labelId: labels.id,
+          name: labels.name,
+          color: this.getColorHexFromId(labels.color),
+          isDeleted: labels.deleted,
+        });
+        await labelModel.save();
+      }
+
     } catch (error) {
       printConsole.error(
         `Failed to handle labels edit: ${(error as Error).message}`

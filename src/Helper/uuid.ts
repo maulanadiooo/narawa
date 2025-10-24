@@ -21,6 +21,7 @@ export const CUuidV4 = () => {
 }
 
 export const UuidV7 = () => {
-    return uuidV7();
+    // Bun.randomUUIDv7();
+    return Bun.randomUUIDv7();
 }
 

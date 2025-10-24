@@ -1,7 +1,7 @@
 import { LabelAssociationType, LabelAssociationTypes } from "@whiskeysockets/baileys/lib/Types/LabelAssociation";
 import { db } from "..";
 import { UuidV7 } from "../Helper/uuid";
-import { ILabels, ILabelsAssociation } from "../Types";
+import { ILabels, ILabelsAssociation, ISession } from "../Types";
 
 export class Labels implements ILabels {
     public id: string;
@@ -10,7 +10,7 @@ export class Labels implements ILabels {
     public name: string;
     public color: string;
     public isDeleted: boolean;
-    
+
 
     constructor(data: Partial<ILabels> = {}) {
         this.id = data.id || UuidV7();
@@ -43,5 +43,40 @@ export class Labels implements ILabels {
             this.color,
             this.isDeleted,
         ]);
+    }
+
+    
+
+    lastLabelId = async (session: ISession): Promise<string> => {
+        const sql = `SELECT 
+        label_id 
+        FROM labels
+        WHERE session_id = ? 
+        ORDER BY CAST(label_id AS UNSIGNED) DESC 
+        LIMIT 1`;
+        const rows = await db.query(sql, [session.id]);
+        return rows[0]?.label_id ?? '';
+    }
+
+    checkLabelIdExists = async (session: ISession, labelId: string): Promise<boolean> => {
+        const sql = `SELECT 
+        COUNT(*) as count
+        FROM labels
+        WHERE 
+        session_id = ? AND label_id = ? AND is_deleted = FALSE`;
+        const rows = await db.query(sql, [session.id, labelId]);
+        return rows[0]?.count ?? 0 > 0;
+    }
+
+    getAllLabels = async (session: ISession) => {
+        const sql = `SELECT
+        label_id as id,
+        name,
+        color
+        FROM labels
+        WHERE session_id = ? AND is_deleted = FALSE
+        ORDER BY CAST(label_id AS UNSIGNED) ASC`;
+        const rows = await db.query(sql, [session.id]);
+        return rows;
     }
 }

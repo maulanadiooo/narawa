@@ -124,7 +124,7 @@ export const initDatabase = async (pool: Pool) => {
     const sqlTabelLabels = `CREATE TABLE IF NOT EXISTS labels (
         id VARCHAR(36) PRIMARY KEY,
         session_id VARCHAR(36) NOT NULL,
-        label_id VARCHAR(20) NOT NULL,
+        label_id VARCHAR(36) NOT NULL,
         name VARCHAR(256) NOT NULL,
         color VARCHAR(100) NOT NULL,
         is_deleted BOOLEAN DEFAULT FALSE,
@@ -135,7 +135,7 @@ export const initDatabase = async (pool: Pool) => {
     const sqlTableLabelAssociations = `CREATE TABLE IF NOT EXISTS label_associations (
         id VARCHAR(36) PRIMARY KEY,
         session_id VARCHAR(36) NOT NULL,
-        label_id VARCHAR(20) NOT NULL,
+        label_id VARCHAR(36) NOT NULL,
         type VARCHAR(100) NOT NULL,
         chat_id VARCHAR(36) NOT NULL,
         message_id VARCHAR(36) NULL,

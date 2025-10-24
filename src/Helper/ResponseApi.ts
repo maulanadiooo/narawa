@@ -51,9 +51,9 @@ export const ResponseApi = ({
     responseType = "JSON",
 }: TResponseApiJson<object | null, any>): TReturnResponseJson => {
     set.status = statusCode;
-    if (responseType === "JSON") {
-        set.headers["Content-Type"] = "Application/json";
-    }
+    // if (responseType === "JSON") {
+    //     set.headers["Content-Type"] = "Application/json";
+    // }
     let response: TReturnResponseJson = {
         success: status,
         code,
@@ -112,19 +112,6 @@ export const ResponseNotAuthorized = (set: Context['set'], headers: Context["hea
         status: false,
         code: StringResponse.noAuthCode,
     })
-}
-
-export const ResponseApiJsonDataTable = (dataTable: IRequestDataTable) => {
-    dataTable.set.status = 200;
-    dataTable.set.headers["Content-Type"] = "Application/json";
-
-    return {
-        draw: Number(dataTable.draw),
-        recordsTotal: dataTable.total,
-        recordsFiltered: dataTable.total,
-        data: dataTable.data,
-        otherResponse: dataTable.otherResponse,
-    }
 }
 
 

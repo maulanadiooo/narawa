@@ -128,6 +128,7 @@ const appServer = new Elysia()
       tags: [
         { name: "Session", description: "Related with session" },
         { name: "Chat", description: "Related to chat" },
+        { name: "Label", description: "Related to label" },
       ],
       servers: [
         {

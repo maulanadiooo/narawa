@@ -1,7 +1,7 @@
 import { LabelAssociationType, LabelAssociationTypes } from "@whiskeysockets/baileys/lib/Types/LabelAssociation";
 import { db } from "..";
 import { UuidV7 } from "../Helper/uuid";
-import { ILabelsAssociation } from "../Types";
+import { ILabelsAssociation, ISession } from "../Types";
 
 export class LabelAssociation implements ILabelsAssociation {
     public id: string;
@@ -53,5 +53,32 @@ export class LabelAssociation implements ILabelsAssociation {
             this.type,
             this.chatId,
         ]);
+    }
+
+    checkLabelAssociationExists = async (session: ISession, labelId: string, chatId: string): Promise<boolean> => {
+        const sql = `SELECT 
+        COUNT(*) as count
+        FROM label_associations
+        WHERE 
+        session_id = ? AND label_id = ? AND chat_id = ?`;
+        const rows = await db.query(sql, [session.id, labelId, chatId]);
+        return rows[0]?.count ?? 0 > 0;
+    }
+
+    getAllLabels = async (session: ISession) => {
+        const sql = `SELECT
+        la.chat_id as chat_id,
+        la.message_id as message_id,
+        la.type as for_label, 
+        l.name as label_name, 
+        l.color as label_color, 
+        l.label_id as label_id, 
+        l.is_deleted as is_deleted
+FROM label_associations la
+LEFT JOIN labels l ON la.label_id = l.label_id
+WHERE la.session_id = ?
+`
+        const rows = await db.query(sql, [session.id]);
+        return rows;
     }
 }
