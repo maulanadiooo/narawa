@@ -394,7 +394,12 @@ export class SessionManager {
 
       // Event handlers
       socket.ev.on("connection.update", async (update) => {
-        await this.handleConnectionUpdate(session, update);
+        const sessionData = this.sessions.get(session.sessionName);
+        let sessionSaved = session
+        if (sessionData) {
+          sessionSaved = sessionData.session;
+        }
+        await this.handleConnectionUpdate(sessionSaved, update);
       });
 
       socket.ev.on("creds.update", () => {
@@ -688,6 +693,9 @@ export class SessionManager {
         sessionData.session.status = "connected";
         if (sessionData.socket?.user?.id) {
           session.phoneNumber = sessionData.socket.user.id.split(":")[0];
+        }
+        if (sessionData.socket?.user?.name) {
+          session.name = sessionData.socket.user.name;
         }
       }
 

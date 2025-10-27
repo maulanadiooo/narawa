@@ -355,6 +355,12 @@ export const initDatabase = async (pool: Pool) => {
             table: 'sessions',
             column: 'reject_call',
             sql: `ALTER TABLE sessions ADD COLUMN reject_call BOOLEAN DEFAULT FALSE AFTER wa_version;`
+        },
+        {
+            name: "add_name_in_session",
+            table: "sessions",
+            column: "name",
+            sql: `ALTER TABLE sessions ADD COLUMN name VARCHAR(256) DEFAULT "" AFTER session_name;`
         }
     ]
 
