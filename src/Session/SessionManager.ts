@@ -39,9 +39,10 @@ import { LabelAssociation as LabelAssociationModel } from "../Models/LabelsAssoc
 import { Labels as LabelsModel } from "../Models/Labels";
 import { LabelAssociation, LabelAssociationType, MessageLabelAssociation } from "@whiskeysockets/baileys/lib/Types/LabelAssociation";
 import { Label } from "@whiskeysockets/baileys/lib/Types/Label";
+import { WebsocketService } from "../Websocket/service";
 
 const printConsole = new PrintConsole();
-
+const websocketService = new WebsocketService();
 export class SessionManager {
   sessions: Map<string, SessionManagerData>;
   private logger: P.Logger;
@@ -271,6 +272,15 @@ export class SessionManager {
 
     if (session) {
       if (session.isActive) {
+        websocketService.publishEvent(session.sessionName, JSON.stringify({
+          type: "message",
+          event: "message",
+          data: {
+            type: "error",
+            message: `Session '${sessionName}' already exists and active`
+          }
+        }))
+
         throw new ErrorResponse(
           400,
           "SESSION_IS_ACTIVE",
@@ -454,23 +464,23 @@ export class SessionManager {
       })
 
       socket.ev.on("contacts.upsert", async (contacts) => {
-        
+
       })
 
       socket.ev.on("contacts.update", async (contacts) => {
-        
+
       })
 
       socket.ev.on("chats.update", async (chats) => {
-        
+
       })
 
       socket.ev.on("chats.upsert", async (chats) => {
-        
+
       })
 
       socket.ev.on("chats.delete", async (chats) => {
-        
+
       })
 
       // Update session status
@@ -596,6 +606,14 @@ export class SessionManager {
       printConsole.warning(
         `QR code received for session ${session.sessionName}`
       );
+      websocketService.publishEvent(session.sessionName, JSON.stringify({
+        type: "event",
+        event: "qr_code",
+        data: {
+          sessionName: session.sessionName,
+          qrCode: qr
+        }
+      }))
       // Generate QR code as base64
       try {
         await qrcode.toDataURL(qr);
@@ -659,6 +677,12 @@ export class SessionManager {
         }, 5000); // Wait 5 seconds before reconnecting
       } else {
         printConsole.info(`Session ${session.sessionName} logged out`);
+        
+        websocketService.publishEvent(session.sessionName, JSON.stringify({
+          type: "event",
+          event: "session.disconnected",
+          data: null
+        }))
         session.status = "disconnected";
         session.qrCode = undefined;
         await (session as Session).save();
@@ -700,6 +724,15 @@ export class SessionManager {
       }
 
       await (session as Session).save();
+
+      websocketService.publishEvent(session.sessionName, JSON.stringify({
+        type: "event",
+        event: "session.connected",
+        data: {
+          sessionName: session.sessionName,
+          phoneNumber: session.phoneNumber,
+        }
+      }))
 
       // Send webhook notification
       await this.webhookService.sendEvent({

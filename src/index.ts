@@ -10,6 +10,7 @@ import { SessionManager } from "./Session/SessionManager";
 import { staticPlugin } from '@elysiajs/static'
 import { openapi } from '@elysiajs/openapi'
 import { checkBasicAuth } from "./Helper/BasicAuth";
+import { WebsocketController } from "./Websocket";
 
 export const sessionManager = new SessionManager();
 export const printConsole = new PrintConsole();
@@ -103,7 +104,7 @@ const appServer = new Elysia()
   .use(openapi({
     path: "/documentation",
     exclude: {
-      paths: ["/media/*"]
+      paths: ["/media/*", "/ws/*"]
     },
     documentation: {
       info: {
@@ -138,6 +139,7 @@ const appServer = new Elysia()
       ],
     },
   }))
+  .use(WebsocketController)
   .use(ApiController)
   .onStop((stop) => {
     printConsole.error(`Server Stopped!! ${stop.error}`)
@@ -151,7 +153,6 @@ const appServer = new Elysia()
   })
   .listen({
     port: Bun.env.PORT ?? 6666,
-    reusePort: true,
   }, (server) => {
     setServerInstance(server);
     printConsole.success(`Server running at ${server?.hostname}:${server?.port}`)

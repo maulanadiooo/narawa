@@ -3,6 +3,8 @@ import { db, printConsole } from '..';
 import { UuidV7 } from '../Helper/uuid';
 import { ErrorResponse } from '../Helper/ResponseError';
 
+import { WebsocketService } from "../Websocket/service";
+import { serverInstance } from '../Helper/ServerInstance';
 export class Session implements ISession {
     public id: string;
     public sessionName: string;
@@ -118,6 +120,12 @@ export class Session implements ISession {
             await db.query(sqlWebhookEvents, [this.id]);
             await db.query(sqlSessions, [this.id]);
             await db.commitTransaction();
+            
+            serverInstance?.publish(this.sessionName, JSON.stringify({
+                type: "event",
+                event: "session.deleted",
+                data: null
+            }))
         } catch (error) {
             await db.rollbackTransaction();
             throw new ErrorResponse(500, 'DATABASE_DELETE_ERROR', 'Database delete error');
@@ -156,7 +164,7 @@ export class Session implements ISession {
         return rows.map((row: SessionData) => new Session(row));
     }
 
-    toJSON(): Partial<ISession> {
+    toJSON(): ISession {
         return {
             id: this.id,
             sessionName: this.sessionName,
@@ -166,7 +174,14 @@ export class Session implements ISession {
             isActive: this.isActive,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
-            lastSeen: this.lastSeen
+            lastSeen: this.lastSeen,
+            webhookUrl: this.webhookUrl,
+            isPairingCode: this.isPairingCode,
+            pairingStatus: this.pairingStatus,
+            pairingCode: this.pairingCode,
+            waVersion: this.waVersion,
+            rejectCall: this.rejectCall,
+            name: this.name
         };
     }
 }
