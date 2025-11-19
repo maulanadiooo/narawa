@@ -1141,6 +1141,7 @@ export class SessionManager {
           messageId: message.key.id,
           from: fromJid,
           message: message,
+          text: messageText,
           timestamp: new Date().toISOString(),
         },
       });
