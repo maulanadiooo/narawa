@@ -677,7 +677,7 @@ export class SessionManager {
         }, 5000); // Wait 5 seconds before reconnecting
       } else {
         printConsole.info(`Session ${session.sessionName} logged out`);
-        
+
         websocketService.publishEvent(session.sessionName, JSON.stringify({
           type: "event",
           event: "session.disconnected",
@@ -1147,13 +1147,17 @@ export class SessionManager {
     }
 
     // TODO:: need to save for other jid identifier ?
-    // for now, only save from personal chat, ignore group and etc, also sync related message
+    // for now, only save from personal chat and group, ignore etc, also sync related message
     // I have no IDEA @lid is personal or not, just save it for now
     // TODO: need to check if @lid is personal or not
     if (
-      (fromJid.includes("s.whatsapp.net") || fromJid.includes("@lid")) &&
+      (fromJid.includes("s.whatsapp.net") || fromJid.includes("@lid") || fromJid.includes("@g.us")) &&
       !systemMessage
     ) {
+      let type = "personal";
+      if (fromJid.includes("@g.us")) {
+        type = "group";
+      }
       try {
         // Check if session still exists in database before inserting message
         const sessionExists = await this.sessionModel.findById(session.id);
@@ -1164,8 +1168,8 @@ export class SessionManager {
           return;
         }
         const sql = `INSERT INTO messages 
-                        (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type, message_text, message_timestamp) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, session_id, message_id, from_me, is_read, event, data, ack, ack_string, is_media, media_url, media_type, message_text, message_timestamp, from_jid, message_type) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                         message_text = ?,
                         message_timestamp = ?,
@@ -1197,6 +1201,8 @@ export class SessionManager {
           mediaType,
           messageText,
           timeStamp,
+          fromJid,
+          type,
           messageText,
           timeStamp,
           dataToSave,

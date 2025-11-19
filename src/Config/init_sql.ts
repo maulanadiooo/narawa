@@ -361,6 +361,18 @@ export const initDatabase = async (pool: Pool) => {
             table: "sessions",
             column: "name",
             sql: `ALTER TABLE sessions ADD COLUMN name VARCHAR(256) DEFAULT "" AFTER session_name;`
+        },
+        {
+            name: "add_type_in_messages",
+            table: "messages",
+            column: "message_type",
+            sql: `ALTER TABLE messages ADD COLUMN message_type VARCHAR(256) DEFAULT "" AFTER session_id;`
+        },
+        {
+            name: "add_from_jid",
+            table: "messages",
+            column: "from_jid",
+            sql: `ALTER TABLE messages ADD COLUMN from_jid VARCHAR(256) DEFAULT "" AFTER from_me;`
         }
     ]
 
